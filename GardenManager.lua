@@ -624,6 +624,16 @@ function GardenManager.OnPlotClicked(player: Player, garden: Garden, plot: Plot)
 			return
 		end
 		GrowthSystem.HarvestPlot(player, plot.Index)
+		-- v47.5: golden harvest burst — the payoff moment should feel rewarding
+		local hburst = Instance.new("ParticleEmitter")
+		hburst.Color = ColorSequence.new(Color3.fromRGB(255, 215, 90), Color3.fromRGB(255, 245, 180))
+		hburst.Size = NumberSequence.new(0.55)
+		hburst.Rate = 0
+		hburst.Lifetime = NumberRange.new(0.8, 1.4)
+		hburst.Speed = NumberRange.new(5, 10)
+		hburst.Parent = plot.Part
+		hburst:Emit(36)
+		task.delay(2, function() hburst:Destroy() end)
 	end
 end
 
@@ -658,6 +668,16 @@ function GardenManager.PlantEgg(player: Player, index: number, eggId: string): (
 
 	local GrowthSystem: any = require(script.Parent:WaitForChild("GrowthSystem"))
 	GrowthSystem.RefreshVisual(garden, plot)
+	-- v47.5: soil burst so planting feels snappy (matches the WaterPlot pattern)
+	local burst = Instance.new("ParticleEmitter")
+	burst.Color = ColorSequence.new(Color3.fromRGB(140, 100, 70), Color3.fromRGB(110, 180, 90))
+	burst.Size = NumberSequence.new(0.5)
+	burst.Rate = 0
+	burst.Lifetime = NumberRange.new(0.6, 1.1)
+	burst.Speed = NumberRange.new(4, 9)
+	burst.Parent = plot.Part
+	burst:Emit(24)
+	task.delay(2, function() burst:Destroy() end)
 	if Remotes then R("Notify"):FireClient(player, "Planted a Pet Egg 🥚 (something's inside...)", "ok") end
 	return true, "Planted!"
 end
