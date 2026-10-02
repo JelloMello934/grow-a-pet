@@ -1722,9 +1722,10 @@ end
 end
 -- ============================================================================
 -- BATTLE UI
-local battleFrame: any, battleTurn: any, pickFrame: any, openFighterPicker: any, refreshBattleUI: any -- §escapes: BATTLE UI
+local battleFrame: any, battleTurn: any, pickFrame: any, openFighterPicker: any, refreshBattleUI: any, battleAwaiting: any -- §escapes: BATTLE UI
 do
 -- ============================================================================
+battleAwaiting = false -- v47.5: true between tap and server update (instant button feedback)
 battleFrame= Instance.new("Frame")
 battleFrame.Size = UDim2.new(0.96, 0, 0.9, 0) -- v47: taller + scale-based guts so short phones fit
 battleFrame.Position = UDim2.new(0.02, 0, 0.05, 0)
@@ -1785,9 +1786,24 @@ local btnChoose = button(battleFrame, "⚔️ Choose Fighter", UDim2.new(0.5, 0,
 btnChoose.TextSize = 16
 btnChoose.Visible = false
 btnChoose.MouseButton1Click:Connect(function() openFighterPicker() end)
-btnAttack.MouseButton1Click:Connect(function() R("BattleAttack"):FireServer(1) end)
-btnStrong.MouseButton1Click:Connect(function() R("BattleAttack"):FireServer(2) end)
-btnPotion.MouseButton1Click:Connect(function() R("BattleUsePotion"):FireServer() end)
+-- v47.5: instant tap feedback — action buttons hide the moment you tap so there's
+-- no dead air wondering if it registered. The next BattleUpdate re-shows them;
+-- a 3s failsafe covers a server-rejected tap (no update ever arrives).
+local function battleAct(remoteName: string, arg: number?)
+	if battleAwaiting then return end
+	battleAwaiting = true
+	refreshBattleUI()
+	if arg == nil then R(remoteName):FireServer() else R(remoteName):FireServer(arg) end
+	task.delay(3, function()
+		if battleAwaiting then
+			battleAwaiting = false
+			refreshBattleUI()
+		end
+	end)
+end
+btnAttack.MouseButton1Click:Connect(function() battleAct("BattleAttack", 1) end)
+btnStrong.MouseButton1Click:Connect(function() battleAct("BattleAttack", 2) end)
+btnPotion.MouseButton1Click:Connect(function() battleAct("BattleUsePotion", nil) end)
 btnForfeit.MouseButton1Click:Connect(function() R("BattleForfeit"):FireServer() end)
 
 local function setFighterUI(fill: Frame, txt: TextLabel, nameLbl: TextLabel, f: { [string]: any }?)
@@ -1892,7 +1908,7 @@ refreshBattleUI = function()
 	local logBits = {}
 	for _, line in (v.Log :: { string }) do table.insert(logBits, line) end
 	battleLog.Text = table.concat(logBits, "\n")
-	local canAct = v.YourTurn and v.BothPicked
+	local canAct = v.YourTurn and v.BothPicked and not battleAwaiting -- v47.5: hide while awaiting server
 	btnChoose.Visible = not v.BothPicked
 	btnAttack.Visible = canAct
 	btnStrong.Visible = canAct
@@ -2020,10 +2036,14 @@ coinBox.Font = Enum.Font.FredokaOne
 coinBox.Parent = tradeFrame
 corner(coinBox, 8)
 local coinSetB = button(tradeFrame, "Set 💰", UDim2.new(0.18, -8, 0, 42), UDim2.new(0.75, 8, 0, 150), Color3.fromRGB(150, 110, 60))
-coinSetB.MouseButton1Click:Connect(function()
+local function setTradeCoins() -- v47.5: extracted so Enter key shares it
 	tradeOfferCoins = math.max(0, math.floor(tonumber(coinBox.Text) or 0))
 	coinBox.Text = tostring(tradeOfferCoins)
 	pushTradeOffer()
+end
+coinSetB.MouseButton1Click:Connect(setTradeCoins)
+coinBox.FocusLost:Connect(function(enterPressed: boolean) -- v47.5: Enter sets the offer, one less tap
+	if enterPressed then setTradeCoins() end
 end)
 local tradeConfirmB = button(tradeFrame, "✅ Confirm", UDim2.new(0.44, 0, 0, 46), UDim2.new(0.03, 0, 1, -100), Color3.fromRGB(70, 150, 70))
 local tradeCancelB = button(tradeFrame, "❌ Cancel", UDim2.new(0.44, 0, 0, 46), UDim2.new(0.53, 0, 1, -100), Color3.fromRGB(170, 70, 70))
@@ -2043,6 +2063,14 @@ refreshTradeUI = function()
 	tradeStatus.Text = "Your coins: 💰 " .. (v.YourCoins or 0)
 		.. "   |   You: " .. (if v.You.Confirmed then "✅" else "❌")
 		.. "  Them: " .. (if v.Them.Confirmed then "✅" else "❌")
+	-- v47.5: nudge — when they've confirmed and you haven't, the confirm button calls out
+	if v.Them.Confirmed and not v.You.Confirmed then
+		tradeConfirmB.Text = "✅ CONFIRM!"
+		tradeConfirmB.BackgroundColor3 = Color3.fromRGB(90, 200, 90)
+	else
+		tradeConfirmB.Text = "✅ Confirm"
+		tradeConfirmB.BackgroundColor3 = Color3.fromRGB(70, 150, 70)
+	end
 end
 
 end
@@ -3611,7 +3639,16 @@ end
 
 R("BattleUpdate").OnClientEvent:Connect(function(v: { [string]: any })
 	local old = battleView
+	battleAwaiting = false -- v47.5: server answered, tap feedback ends
 	if old and v.BothPicked then
+		local wasYourTurn = (old :: { [string]: any }).YourTurn == true
+		if v.YourTurn == true and not wasYourTurn then
+			-- v47.5: your-turn pop — the turn label punches so the moment reads instantly
+			battleTurn.TextSize = 26
+			game:GetService("TweenService"):Create(battleTurn,
+				TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ TextSize = 16 }):Play()
+		end
 		local function hpOf(w: { [string]: any }?): number?
 			if not w then return nil end
 			return w.HP :: number
