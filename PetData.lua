@@ -1,0 +1,1129 @@
+--!strict
+-- PetData (ModuleScript -> ReplicatedStorage > Shared > PetData)
+-- 58 pets: 3 starter lines (linear, 3 stages), 15 wild basics each with
+-- 2-3 BRANCHING evolutions (incl. a sky-only flying line), 3 event-gated
+-- secret final forms, 6 fossil pets (digging only).
+-- No external assets: everything is Parts + Particles.
+--
+-- Growing loop: Pet Egg -> random basic (stage 1) -> grow the pet in a plot ->
+-- evolution roll -> one of its branches (weighted; secrets need their event).
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TypeChart = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TypeChart"))
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local PetData = {}
+
+export type PetDef = {
+	Name: string,
+	Rarity: string,
+	Type: string,
+	Stage: number, -- 1 = basic, 2 = evolved, 3 = final/secret
+	Value: number, -- base sell price
+	Nocturnal: boolean,
+	Body: Color3,
+	Ear: string, -- "point" | "flop" | "horn" | "fin" | "wing" | "none"
+	Tail: boolean,
+	Shell: boolean,
+	Size: number,
+	Move2: string?, -- coverage move type (defaults to own type)
+	Starter: boolean?, -- true for the 9 starter-line pets
+	ActiveTime: string, -- "Day" | "Night" | "Any": when this species comes out
+	Fossil: boolean?, -- v14: fossil pets (digging only, never wild/egg)
+	Sky: boolean?, -- v16: sky-island pets (sky zones only, never wild-lowlands/egg)
+	Rot: boolean?, -- v21: rot-only pets (infestation only, never wild/egg)
+	Twilight: boolean?, -- v23: twilight-dimension exclusives (never wild-lowlands/egg)
+	Extras: { [string]: any }?, -- signature visuals: LeafCrown | Flippers | BackSpikes
+		-- FireMane | AquaFins | Comb | CottonTail | VoltCheeks | IceShards
+		-- RockSpikes | LavaSpikes | EyeDiscs | HeadCrest | TailTip | MoonMark
+		-- AmberCore | WindSwirl | GlowEyes (value = eye Color3)
+		-- Snout | Beak | Sprout | LeafRuff | BubbleDome | FlameTail | SparkTail | BigJaw
+	Build: string?, -- body silhouette: "pup" (default) | "stocky" | "slim" | "blob" | "long"
+}
+
+local C = Color3.fromRGB
+
+local P: { [string]: PetDef } = {}
+local function pet(id: string, name: string, rarity: string, ptype: string, stage: number,
+	value: number, noct: boolean, body: Color3, ear: string, tail: boolean, shell: boolean,
+	size: number, move2: string?, starter: boolean?, extras: { [string]: any }?, active: string?, fossil: boolean?,
+	sky: boolean?, rot: boolean?, twilight: boolean?)
+	P[id] = { Name = name, Rarity = rarity, Type = ptype, Stage = stage, Value = value,
+		Nocturnal = noct, Body = body, Ear = ear, Tail = tail, Shell = shell, Size = size,
+		Move2 = move2, Starter = starter, Extras = extras, ActiveTime = active or "Any", Fossil = fossil,
+		Sky = sky, Rot = rot, Twilight = twilight }
+end
+
+-- ============ STARTERS (linear lines, picked on first join, never sellable) ============
+-- Grass line
+pet("Leafpup", "Leafpup", "Rare", "Grass", 1, 5000, false, C(55, 195, 55), "point", true, false, 0.95, "Ground", true, { LeafCrown = true })
+pet("Florawolf", "Florawolf", "Epic", "Grass", 2, 20000, false, C(40, 181, 40), "point", true, false, 1.1, "Ground", true, { LeafCrown = true })
+pet("Terragrowl", "Terragrowl", "Legendary", "Grass", 3, 80000, false, C(25, 168, 25), "horn", true, false, 1.3, "Ground", true, { LeafCrown = true })
+-- Fire line
+pet("Cindercub", "Cindercub", "Rare", "Fire", 1, 5000, false, C(241, 85, 0), "point", true, false, 0.95, "Flying", true, { FireMane = true })
+pet("Flamane", "Flamane", "Epic", "Fire", 2, 20000, false, C(237, 72, 0), "point", true, false, 1.1, "Flying", true, { FireMane = true })
+pet("Infernoar", "Infernoar", "Legendary", "Fire", 3, 80000, false, C(223, 57, 0), "wing", true, false, 1.3, "Flying", true, { FireMane = true })
+-- Water line
+pet("Bubblin", "Bubblin", "Rare", "Water", 1, 5000, false, C(19, 122, 241), "fin", true, false, 0.95, "Ice", true, { AquaFins = true })
+pet("Riptide", "Riptide", "Epic", "Water", 2, 20000, false, C(0, 101, 237), "fin", true, false, 1.1, "Ice", true, { AquaFins = true })
+pet("Abyssjaw", "Abyssjaw", "Legendary", "Water", 3, 80000, false, C(0, 89, 223), "fin", true, false, 1.3, "Ice", true, { AquaFins = true })
+
+-- ============ WILD BASICS (stage 1, hatch from Pet Eggs) ============
+pet("Chick", "Chick", "Common", "Normal", 1, 120, false, C(255, 211, 0), "none", false, false, 0.7, nil, nil, { Comb = true }, "Day")
+pet("Bunny", "Bunny", "Common", "Normal", 1, 120, false, C(246, 246, 246), "flop", true, false, 0.9, nil, nil, { CottonTail = true }, "Night")
+pet("Voltpup", "Voltpup", "Uncommon", "Electric", 1, 400, false, C(255, 201, 0), "point", true, false, 0.9, nil, nil, { VoltCheeks = true }, "Day")
+pet("Pinnipup", "Pinnipup", "Common", "Water", 1, 150, false, C(85, 154, 223), "fin", true, false, 0.9, nil, nil, { AquaFins = true })
+pet("Pebblor", "Pebblor", "Common", "Ground", 1, 160, false, C(186, 133, 81), "none", false, false, 0.85, nil, nil, { RockSpikes = true })
+pet("Hootlet", "Hootlet", "Common", "Flying", 1, 140, false, C(177, 124, 71), "none", false, false, 0.85, nil, nil, { EyeDiscs = true }, "Night")
+pet("Sproutie", "Sproutie", "Common", "Grass", 1, 150, false, C(65, 204, 65), "none", false, false, 0.8, nil, nil, { LeafCrown = true }, "Day")
+pet("Cindert", "Cindert", "Uncommon", "Fire", 1, 450, false, C(241, 80, 0), "fin", true, false, 0.9, nil, nil, { FireMane = true }, "Day")
+pet("Gustling", "Gustling", "Common", "Flying", 1, 170, false, C(177, 194, 237), "wing", false, false, 0.85, nil, nil, { HeadCrest = true })
+pet("Turtle", "Turtle", "Uncommon", "Water", 1, 500, false, C(63, 186, 63), "none", true, true, 0.9, nil, nil, { Flippers = true })
+pet("Fox", "Fox", "Uncommon", "Normal", 1, 550, true, C(232, 96, 0), "point", true, false, 1.0, nil, nil, { TailTip = true }, "Night")
+pet("Drakeling", "Drakeling", "Rare", "Fire", 1, 2500, false, C(204, 29, 0), "wing", true, false, 0.9, nil, nil, { BackSpikes = true }, "Night")
+-- ============ STAGE 2 BRANCHES ============
+pet("Cluckwing", "Cluckwing", "Uncommon", "Flying", 2, 700, false, C(255, 230, 77), "wing", true, false, 1.0, nil, nil, { Comb = true }, "Day")
+pet("Pyrochick", "Pyrochick", "Uncommon", "Fire", 2, 800, false, C(255, 118, 0), "wing", true, false, 1.0, "Flying", nil, { Comb = true }, "Day")
+pet("Jackalope", "Jackalope", "Uncommon", "Normal", 2, 800, false, C(237, 219, 185), "horn", true, false, 1.05, nil, nil, { CottonTail = true }, "Night")
+pet("Moonhare", "Moonhare", "Rare", "Normal", 2, 1500, true, C(181, 189, 232), "flop", true, false, 1.05, nil, nil, { CottonTail = true }, "Night")
+pet("Dunehopper", "Dunehopper", "Uncommon", "Ground", 2, 900, false, C(223, 171, 85), "point", true, false, 1.0, nil, nil, { CottonTail = true }, "Day")
+pet("Amperion", "Amperion", "Rare", "Electric", 2, 3000, false, C(255, 193, 0), "horn", true, false, 1.15, nil, nil, { VoltCheeks = true }, "Day")
+pet("Sparkstriker", "Sparkstriker", "Rare", "Flying", 2, 2800, false, C(250, 208, 46), "wing", true, false, 1.1, "Electric", nil, { VoltCheeks = true }, "Day")
+pet("Glacipup", "Glacipup", "Uncommon", "Ice", 2, 900, false, C(169, 220, 246), "point", true, false, 1.0, "Water", nil, { IceShards = true })
+pet("Tidecaller", "Tidecaller", "Uncommon", "Water", 2, 1000, false, C(9, 112, 232), "fin", true, false, 1.05, nil, nil, { AquaFins = true }, "Night")
+pet("Bouldurr", "Bouldurr", "Uncommon", "Ground", 2, 1000, false, C(158, 122, 87), "none", false, false, 1.15, nil, nil, { RockSpikes = true })
+pet("Magmite", "Magmite", "Rare", "Fire", 2, 2600, false, C(186, 29, 0), "horn", false, false, 1.0, "Ground", nil, { LavaSpikes = true })
+pet("Noctowl", "Noctowl", "Uncommon", "Dark", 2, 1100, true, C(84, 75, 122), "none", false, false, 1.0, "Flying", nil, { EyeDiscs = true, GlowEyes = C(150, 200, 255) }, "Night")
+pet("Stormowl", "Stormowl", "Rare", "Electric", 2, 2800, false, C(102, 137, 223), "wing", false, false, 1.1, "Flying", nil, { EyeDiscs = true, VoltCheeks = true }, "Day")
+pet("Thornback", "Thornback", "Uncommon", "Grass", 2, 950, false, C(45, 186, 45), "horn", true, false, 1.0, nil, nil, { BackSpikes = true }, "Day")
+pet("Mosshorn", "Mosshorn", "Rare", "Ground", 2, 2400, false, C(124, 177, 88), "horn", true, false, 1.15, "Grass", nil, { RockSpikes = true })
+pet("Cragmite", "Cragmite", "Rare", "Ground", 2, 3200, false, C(140, 103, 76), "none", true, true, 1.15, "Fire", nil, { RockSpikes = true })
+pet("Infernite", "Infernite", "Rare", "Fire", 2, 3400, false, C(232, 52, 0), "horn", true, false, 1.15, nil, nil, { FireMane = true }, "Day")
+pet("Tempestra", "Tempestra", "Uncommon", "Flying", 2, 1050, false, C(139, 173, 241), "wing", true, false, 1.05, "Electric", nil, { HeadCrest = true }, "Day")
+pet("Skyshriek", "Skyshriek", "Rare", "Dark", 2, 3000, true, C(70, 60, 117), "wing", true, false, 1.1, "Flying", nil, { HeadCrest = true, GlowEyes = C(255, 80, 80) }, "Night")
+pet("Shellguard", "Shellguard", "Rare", "Water", 2, 3500, false, C(48, 172, 128), "none", true, true, 1.15, nil, nil, { Flippers = true })
+pet("Tidalord", "Tidalord", "Epic", "Water", 2, 12000, false, C(0, 119, 204), "fin", true, false, 1.3, nil, nil, { Flippers = true }, "Night")
+pet("Emberfox", "Emberfox", "Rare", "Fire", 2, 3800, false, C(237, 100, 0), "point", true, false, 1.1, nil, nil, { FireMane = true, TailTip = true }, "Day")
+pet("Duskfox", "Duskfox", "Rare", "Dark", 2, 4000, true, C(113, 77, 149), "point", true, false, 1.1, nil, nil, { TailTip = true, GlowEyes = C(255, 240, 170) }, "Night")
+pet("Drakewing", "Drakewing", "Epic", "Flying", 2, 22000, false, C(195, 21, 3), "wing", true, false, 1.25, "Fire", nil, { BackSpikes = true }, "Day")
+pet("Cinderdrake", "Cinderdrake", "Epic", "Fire", 2, 25000, false, C(214, 28, 0), "wing", true, false, 1.25, nil, nil, { BackSpikes = true }, "Day")
+-- ============ SECRETS (stage 3, event-gated evolution branches) ============
+pet("PrimordialTurtle", "Primordial Turtle", "Secret", "Water", 3, 750000, false, C(59, 149, 95), "none", true, true, 1.4, nil, nil, { Flippers = true })
+pet("LunarFox", "Lunar Fox", "Secret", "Dark", 3, 1200000, true, C(125, 160, 237), "point", true, false, 1.2, nil, nil, { MoonMark = true, GlowEyes = C(230, 240, 255) }, "Night")
+pet("VoidDragon", "Void Dragon", "Secret", "Dark", 3, 2500000, true, C(46, 9, 122), "wing", true, false, 1.4, nil, nil, { BackSpikes = true, GlowEyes = C(180, 120, 255) }, "Night")
+-- ============ FOSSILS (v14: dug up, never wild, never from eggs) ============
+-- Two linear 3-stage Ground lines (the game's rock type), revived from
+-- fossil fragments found by digging. Rare -> Epic -> Legendary.
+pet("Relikub", "Relikub", "Rare", "Ground", 1, 3000, false, C(195, 143, 90), "none", false, false, 0.85, "Grass", nil, { RockSpikes = true, AmberCore = true }, "Any", true)
+pet("Fossilith", "Fossilith", "Epic", "Ground", 2, 20000, false, C(168, 132, 87), "none", true, false, 1.15, "Grass", nil, { RockSpikes = true, AmberCore = true }, "Any", true)
+pet("Monolithon", "Monolithon", "Legendary", "Ground", 3, 70000, false, C(140, 113, 76), "horn", true, false, 1.35, "Grass", nil, { RockSpikes = true, AmberCore = true, GlowEyes = C(255, 180, 60) }, "Any", true)
+pet("Sedimite", "Sedimite", "Rare", "Ground", 1, 3000, false, C(204, 161, 109), "none", false, false, 0.85, "Fire", nil, { AmberCore = true }, "Any", true)
+pet("Excavore", "Excavore", "Epic", "Ground", 2, 20000, false, C(181, 137, 93), "none", true, false, 1.15, "Fire", nil, { RockSpikes = true, AmberCore = true }, "Any", true)
+pet("Cragolith", "Cragolith", "Legendary", "Ground", 3, 70000, false, C(149, 122, 86), "horn", true, false, 1.35, "Fire", nil, { RockSpikes = true, AmberCore = true }, "Any", true)
+
+-- ============ SKY LINE (v16: sky-island only, never wild-lowlands, never eggs) ============
+-- The Zephyric line rides the winds above the west lake. Stage 1 only spawns
+-- on the sky islands; stage 2/3 are reached by growing like any other pet.
+pet("Zephyric", "Zephyric", "Uncommon", "Flying", 1, 600, false, C(135, 186, 246), "wing", false, false, 0.85, "Electric", nil, { HeadCrest = true, WindSwirl = true }, "Day", nil, true)
+pet("Gustwing", "Gustwing", "Rare", "Flying", 2, 3200, false, C(87, 156, 241), "wing", true, false, 1.1, "Electric", nil, { HeadCrest = true, WindSwirl = true }, "Day", nil, true)
+pet("Stormsoar", "Stormsoar", "Epic", "Flying", 3, 24000, false, C(43, 112, 232), "wing", true, false, 1.3, "Electric", nil, { HeadCrest = true, WindSwirl = true, GlowEyes = C(200, 230, 255) }, "Day", nil, true)
+
+-- ============ BUG LINE (v21: rot-only — never wild, never from eggs) ============
+-- Leave a Ready plot unclaimed too long (online) and the pet rots into these
+-- creepy-crawlies. Neglect becomes discovery: they evolve/fuse/battle/trade
+-- like any other pet. Linear 3-stage line, like the starters.
+pet("Grublet", "Grublet", "Uncommon", "Bug", 1, 600, false, C(137, 181, 32), "none", true, false, 0.8, "Dark", nil, { EyeDiscs = true }, "Any", nil, nil, true)
+pet("Miasmite", "Miasmite", "Rare", "Bug", 2, 3200, false, C(114, 168, 7), "horn", true, false, 1.05, "Dark", nil, { BackSpikes = true }, "Any", nil, nil, true)
+pet("Blightwing", "Blightwing", "Epic", "Bug", 3, 18000, true, C(88, 149, 0), "wing", true, false, 1.25, "Dark", nil, { BackSpikes = true, GlowEyes = C(190, 230, 90) }, "Night", nil, nil, true)
+
+-- ============ TWILIGHT DIMENSION (v23: exclusive to the dimension — never wild-lowlands, never eggs) ============
+-- A light line that only roams Daybreak Meadows (eternal day) and a dark line
+-- that only roams the Umbral Fields (eternal night). Linear 3-stage lines.
+pet("Brightpup", "Brightpup", "Uncommon", "Electric", 1, 700, false, C(255, 216, 77), "point", true, false, 0.9, nil, nil, { HeadCrest = true, GlowEyes = C(255, 200, 80) }, "Day", nil, nil, nil, true)
+pet("Glimmerolt", "Glimmerolt", "Rare", "Electric", 2, 3400, false, C(250, 199, 46), "point", true, false, 1.1, nil, nil, { HeadCrest = true, GlowEyes = C(255, 205, 90) }, "Day", nil, nil, nil, true)
+pet("Aurorion", "Aurorion", "Epic", "Electric", 3, 20000, false, C(246, 178, 16), "wing", true, false, 1.3, nil, nil, { HeadCrest = true, GlowEyes = C(255, 210, 100) }, "Day", nil, nil, nil, true)
+pet("Duskit", "Duskit", "Uncommon", "Dark", 1, 700, false, C(72, 54, 145), "point", true, false, 0.9, nil, nil, { GlowEyes = C(190, 130, 255) }, "Night", nil, nil, nil, true)
+pet("Shadetail", "Shadetail", "Rare", "Dark", 2, 3400, true, C(57, 38, 131), "point", true, false, 1.1, nil, nil, { TailTip = true, GlowEyes = C(195, 135, 255) }, "Night", nil, nil, nil, true)
+pet("Eclipsire", "Eclipsire", "Epic", "Dark", 3, 20000, true, C(37, 18, 122), "wing", true, false, 1.3, nil, nil, { MoonMark = true, GlowEyes = C(200, 140, 255) }, "Night", nil, nil, nil, true)
+PetData.PETS = P
+
+-- v47 visual identity pass: distinct body silhouettes + signature extras per
+-- species, so pets read as different animals instead of recolors. (v48: all
+-- parts converted to chunky BGS-style cubes.) The three
+-- starter lines are the most distinct: grass = stocky forest guardian with a
+-- sprout/leaf collar, fire = slim ember predator with muzzle + flame mane,
+-- water = round blob with bubble helmet / heavy jaw.
+local VISUALS: { [string]: { build: string?, add: { [string]: any }? } } = {
+	-- STARTERS: grass line (stocky guardian, sprout + leaf ruff)
+	Leafpup = { build = "stocky", add = { Sprout = true } },
+	Florawolf = { build = "stocky", add = { Sprout = true, LeafRuff = true } },
+	Terragrowl = { build = "stocky", add = { Sprout = true, LeafRuff = true } },
+	-- STARTERS: fire line (slim predator, muzzle + flame mane)
+	Cindercub = { build = "slim", add = { Snout = true } },
+	Flamane = { build = "slim", add = { Snout = true } },
+	Infernoar = { build = "slim", add = { Snout = true, FlameTail = true } },
+	-- STARTERS: water line (round blob, bubble helmet / heavy jaw)
+	Bubblin = { build = "blob", add = { BubbleDome = true } },
+	Riptide = { build = "blob", add = { BubbleDome = true } },
+	Abyssjaw = { build = "blob", add = { BigJaw = true } },
+	-- WILD BASICS
+	Chick = { add = { Beak = true } },
+	Bunny = { build = "long" },
+	Voltpup = { add = { Snout = true, SparkTail = true } },
+	Pinnipup = { build = "blob", add = { Snout = true } },
+	Pebblor = { build = "stocky" },
+	Hootlet = { add = { Beak = true } },
+	Sproutie = { add = { Sprout = true } },
+	Cindert = { build = "slim", add = { Snout = true } },
+	Gustling = { build = "slim", add = { Beak = true } },
+	Turtle = { build = "stocky" },
+	Fox = { build = "slim", add = { Snout = true } },
+	Drakeling = { build = "slim", add = { Snout = true } },
+	-- STAGE 2 BRANCHES
+	Cluckwing = { add = { Beak = true } },
+	Pyrochick = { add = { Beak = true } },
+	Jackalope = { build = "long" },
+	Moonhare = { build = "long" },
+	Dunehopper = { build = "long" },
+	Amperion = { build = "slim", add = { Snout = true, SparkTail = true } },
+	Sparkstriker = { build = "slim", add = { SparkTail = true } },
+	Glacipup = { add = { Snout = true } },
+	Tidecaller = { build = "blob" },
+	Bouldurr = { build = "stocky" },
+	Magmite = { build = "stocky" },
+	Noctowl = { add = { Beak = true } },
+	Stormowl = { add = { Beak = true, SparkTail = true } },
+	Thornback = { build = "stocky" },
+	Mosshorn = { build = "stocky" },
+	Cragmite = { build = "stocky" },
+	Infernite = { build = "slim", add = { Snout = true } },
+	Tempestra = { build = "slim", add = { Beak = true } },
+	Skyshriek = { build = "slim", add = { Beak = true } },
+	Shellguard = { build = "stocky" },
+	Tidalord = { build = "blob" },
+	Emberfox = { build = "slim", add = { Snout = true, FlameTail = true } },
+	Duskfox = { build = "slim", add = { Snout = true } },
+	Drakewing = { build = "slim", add = { Snout = true } },
+	Cinderdrake = { build = "slim", add = { Snout = true } },
+	-- SECRETS
+	PrimordialTurtle = { build = "stocky" },
+	LunarFox = { build = "slim", add = { Snout = true } },
+	VoidDragon = { build = "slim", add = { Snout = true } },
+	-- FOSSILS (heavy rock bodies)
+	Relikub = { build = "stocky" },
+	Fossilith = { build = "stocky" },
+	Monolithon = { build = "stocky" },
+	Sedimite = { build = "stocky" },
+	Excavore = { build = "stocky" },
+	Cragolith = { build = "stocky" },
+	-- SKY LINE (sleek fliers)
+	Zephyric = { build = "slim", add = { Beak = true } },
+	Gustwing = { build = "slim", add = { Beak = true } },
+	Stormsoar = { build = "slim", add = { Beak = true } },
+	-- BUG LINE (long grubs)
+	Grublet = { build = "long" },
+	Miasmite = { build = "long" },
+	Blightwing = { build = "long" },
+	-- TWILIGHT DIMENSION
+	Brightpup = { add = { Snout = true } },
+	Glimmerolt = { build = "slim", add = { Snout = true, SparkTail = true } },
+	Aurorion = { build = "slim", add = { SparkTail = true } },
+	Duskit = { add = { Snout = true } },
+	Shadetail = { build = "slim", add = { Snout = true } },
+	Eclipsire = { build = "slim", add = { Snout = true } },
+}
+for id, v in VISUALS do
+	local d = P[id]
+	if d then
+		if v.build then d.Build = v.build end
+		if v.add then
+			local x = d.Extras or {}
+			d.Extras = x
+			for k, val in v.add do x[k] = val end
+		end
+	end
+end
+
+-- Starter pick options (stage-1 of each starter line)
+PetData.STARTERS = { "Leafpup", "Cindercub", "Bubblin" }
+-- v14: fossil species revivable from fragments (stage-1 ids)
+PetData.FOSSIL_STARTERS = { "Relikub", "Sedimite" }
+PetData.STARTER_DESC = {
+	Leafpup = "The loyal Grass pup. Strong vs Water, evolves into Florawolf then Terragrowl.",
+	Cindercub = "The fiery cub. Strong vs Grass, evolves into Flamane then Infernoar.",
+	Bubblin = "The bubbly swimmer. Strong vs Fire, evolves into Riptide then Abyssjaw.",
+}
+
+-- Evolution branches: petId -> list of {To, Weight, Event?}
+-- Event-gated branches only roll while that event is active.
+PetData.EVOLUTIONS = {
+	Leafpup = { { To = "Florawolf", Weight = 100 } },
+	Florawolf = { { To = "Terragrowl", Weight = 100 } },
+	Cindercub = { { To = "Flamane", Weight = 100 } },
+	Flamane = { { To = "Infernoar", Weight = 100 } },
+	Bubblin = { { To = "Riptide", Weight = 100 } },
+	Riptide = { { To = "Abyssjaw", Weight = 100 } },
+	Chick = { { To = "Cluckwing", Weight = 50 }, { To = "Pyrochick", Weight = 50 } },
+	Bunny = { { To = "Jackalope", Weight = 40 }, { To = "Moonhare", Weight = 35 }, { To = "Dunehopper", Weight = 25 } },
+	Voltpup = { { To = "Amperion", Weight = 55 }, { To = "Sparkstriker", Weight = 45 } },
+	Pinnipup = { { To = "Glacipup", Weight = 50 }, { To = "Tidecaller", Weight = 50 } },
+	Pebblor = { { To = "Bouldurr", Weight = 55 }, { To = "Magmite", Weight = 45 } },
+	Hootlet = { { To = "Noctowl", Weight = 50 }, { To = "Stormowl", Weight = 50 } },
+	Sproutie = { { To = "Thornback", Weight = 55 }, { To = "Mosshorn", Weight = 45 } },
+	Cindert = { { To = "Cragmite", Weight = 50 }, { To = "Infernite", Weight = 50 } },
+	Gustling = { { To = "Tempestra", Weight = 55 }, { To = "Skyshriek", Weight = 45 } },
+	Turtle = { { To = "Shellguard", Weight = 40 }, { To = "Tidalord", Weight = 40 },
+		{ To = "PrimordialTurtle", Weight = 20, Event = "Rain" } },
+	Fox = { { To = "Emberfox", Weight = 40 }, { To = "Duskfox", Weight = 40 },
+		{ To = "LunarFox", Weight = 20, Event = "Night" } },
+	Drakeling = { { To = "Drakewing", Weight = 40 }, { To = "Cinderdrake", Weight = 40 },
+		{ To = "VoidDragon", Weight = 20, Event = "Meteor" } },
+	-- v14: fossil lines evolve linearly like the starters
+	Relikub = { { To = "Fossilith", Weight = 100 } },
+	Fossilith = { { To = "Monolithon", Weight = 100 } },
+	Sedimite = { { To = "Excavore", Weight = 100 } },
+	Excavore = { { To = "Cragolith", Weight = 100 } },
+	-- v16: sky line evolves linearly too
+	Zephyric = { { To = "Gustwing", Weight = 100 } },
+	Gustwing = { { To = "Stormsoar", Weight = 100 } },
+	-- v21: rot-only bug line (linear)
+	Grublet = { { To = "Miasmite", Weight = 100 } },
+	Miasmite = { { To = "Blightwing", Weight = 100 } },
+	-- v23: twilight-dimension lines (linear)
+	Brightpup = { { To = "Glimmerolt", Weight = 100 } },
+	Glimmerolt = { { To = "Aurorion", Weight = 100 } },
+	Duskit = { { To = "Shadetail", Weight = 100 } },
+	Shadetail = { { To = "Eclipsire", Weight = 100 } },
+}
+
+-- ============ EVOLUTION STONES (v24) — pick your branch ============
+-- One stone per evolution branch of every multi-branch species. Using the
+-- matching stone on a growing pet FORCES that branch at harvest (the stone
+-- is consumed only if the evolution actually happens). Without a stone,
+-- evolution rolls branches exactly as before — stones are pure agency,
+-- never required. Event-gated branches (secrets) still need their event:
+-- a stone can't force a branch whose gate isn't open.
+-- stoneId -> {Name, To (branch target petId), From (source species petId), Price}
+PetData.EVO_STONES = {
+	-- Chick
+	CluckwingStone = { Name = "🪨 Skyplume Stone", To = "Cluckwing", From = "Chick", Price = 250,
+		Desc = "Forces Chick → Cluckwing" },
+	PyrochickStone = { Name = "🪨 Emberquill Stone", To = "Pyrochick", From = "Chick", Price = 250,
+		Desc = "Forces Chick → Pyrochick" },
+	-- Bunny
+	JackalopeStone = { Name = "🪨 Horncrest Stone", To = "Jackalope", From = "Bunny", Price = 250,
+		Desc = "Forces Bunny → Jackalope" },
+	MoonhareStone = { Name = "🪨 Moonlace Stone", To = "Moonhare", From = "Bunny", Price = 350,
+		Desc = "Forces Bunny → Moonhare" },
+	DunehopperStone = { Name = "🪨 Sandpaw Stone", To = "Dunehopper", From = "Bunny", Price = 250,
+		Desc = "Forces Bunny → Dunehopper" },
+	-- Voltpup
+	AmperionStone = { Name = "🪨 Voltcore Stone", To = "Amperion", From = "Voltpup", Price = 350,
+		Desc = "Forces Voltpup → Amperion" },
+	SparkstrikerStone = { Name = "🪨 Stormpinion Stone", To = "Sparkstriker", From = "Voltpup", Price = 350,
+		Desc = "Forces Voltpup → Sparkstriker" },
+	-- Pinnipup
+	GlacipupStone = { Name = "🪨 Glacier Stone", To = "Glacipup", From = "Pinnipup", Price = 250,
+		Desc = "Forces Pinnipup → Glacipup" },
+	TidecallerStone = { Name = "🪨 Tidebell Stone", To = "Tidecaller", From = "Pinnipup", Price = 250,
+		Desc = "Forces Pinnipup → Tidecaller" },
+	-- Pebblor
+	BouldurrStone = { Name = "🪨 Boulderheart Stone", To = "Bouldurr", From = "Pebblor", Price = 250,
+		Desc = "Forces Pebblor → Bouldurr" },
+	MagmiteStone = { Name = "🪨 Magmaheart Stone", To = "Magmite", From = "Pebblor", Price = 350,
+		Desc = "Forces Pebblor → Magmite" },
+	-- Hootlet
+	NoctowlStone = { Name = "🪨 Nightgaze Stone", To = "Noctowl", From = "Hootlet", Price = 250,
+		Desc = "Forces Hootlet → Noctowl" },
+	StormowlStone = { Name = "🪨 Tempest Stone", To = "Stormowl", From = "Hootlet", Price = 350,
+		Desc = "Forces Hootlet → Stormowl" },
+	-- Sproutie
+	ThornbackStone = { Name = "🪨 Thornmail Stone", To = "Thornback", From = "Sproutie", Price = 250,
+		Desc = "Forces Sproutie → Thornback" },
+	MosshornStone = { Name = "🪨 Mosshide Stone", To = "Mosshorn", From = "Sproutie", Price = 350,
+		Desc = "Forces Sproutie → Mosshorn" },
+	-- Cindert
+	CragmiteStone = { Name = "🪨 Cragscale Stone", To = "Cragmite", From = "Cindert", Price = 350,
+		Desc = "Forces Cindert → Cragmite" },
+	InferniteStone = { Name = "🪨 Cinderheart Stone", To = "Infernite", From = "Cindert", Price = 350,
+		Desc = "Forces Cindert → Infernite" },
+	-- Gustling
+	TempestraStone = { Name = "🪨 Galeheart Stone", To = "Tempestra", From = "Gustling", Price = 250,
+		Desc = "Forces Gustling → Tempestra" },
+	SkyshriekStone = { Name = "🪨 Nightshriek Stone", To = "Skyshriek", From = "Gustling", Price = 350,
+		Desc = "Forces Gustling → Skyshriek" },
+	-- Turtle
+	ShellguardStone = { Name = "🪨 Shellwarden Stone", To = "Shellguard", From = "Turtle", Price = 350,
+		Desc = "Forces Turtle → Shellguard" },
+	TidalordStone = { Name = "🪨 Tidecrown Stone", To = "Tidalord", From = "Turtle", Price = 450,
+		Desc = "Forces Turtle → Tidalord" },
+	PrimordialTurtleStone = { Name = "🪨 Rainrelic Stone", To = "PrimordialTurtle", From = "Turtle", Price = 550,
+		Desc = "Forces Turtle → Primordial Turtle (needs 🌧️ Rain)" },
+	-- Fox
+	EmberfoxStone = { Name = "🪨 Emberpelt Stone", To = "Emberfox", From = "Fox", Price = 350,
+		Desc = "Forces Fox → Emberfox" },
+	DuskfoxStone = { Name = "🪨 Duskpelt Stone", To = "Duskfox", From = "Fox", Price = 350,
+		Desc = "Forces Fox → Duskfox" },
+	LunarFoxStone = { Name = "🪨 Moonmark Stone", To = "LunarFox", From = "Fox", Price = 550,
+		Desc = "Forces Fox → Lunar Fox (needs 🌙 night)" },
+	-- Drakeling
+	DrakewingStone = { Name = "🪨 Drakescale Stone", To = "Drakewing", From = "Drakeling", Price = 450,
+		Desc = "Forces Drakeling → Drakewing" },
+	CinderdrakeStone = { Name = "🪨 Ashscale Stone", To = "Cinderdrake", From = "Drakeling", Price = 450,
+		Desc = "Forces Drakeling → Cinderdrake" },
+	VoidDragonStone = { Name = "🪨 Voidshard Stone", To = "VoidDragon", From = "Drakeling", Price = 550,
+		Desc = "Forces Drakeling → Void Dragon (needs ☄️ Meteor)" },
+}
+
+-- branch target petId -> stoneId (reverse lookup)
+local stoneByBranch: { [string]: string } = {}
+for sid, sdef in PetData.EVO_STONES do
+	stoneByBranch[(sdef :: { [string]: any }).To] = sid
+end
+function PetData.StoneForBranch(toId: string): string?
+	return stoneByBranch[toId]
+end
+
+-- Hatch weights for the single Pet Egg (stage-1 wild pets only)
+local HATCH_W = { Common = 40, Uncommon = 12, Rare = 5 }
+
+function PetData.RollPet(): string
+	local pool: { { Id: string, W: number } } = {}
+	local total = 0
+	for id, def in P do
+		if def.Stage == 1 and not def.Starter and not def.Fossil and not def.Sky and not def.Rot and not def.Twilight then -- v14/v16/v21/v23: fossils, sky pets, rot bugs & twilight exclusives never hatch from eggs
+			local w: number = (HATCH_W :: { [string]: number })[def.Rarity] or 1
+			total += w
+			table.insert(pool, { Id = id, W = w })
+		end
+	end
+	assert(#pool > 0, "No hatchable pets")
+	local roll = math.random() * total
+	for _, e in pool do
+		roll -= e.W
+		if roll <= 0 then return e.Id end
+	end
+	return pool[1].Id
+end
+
+function PetData.GetRarity(petId: string): string
+	local d = P[petId]
+	return d and d.Rarity or "Common"
+end
+
+-- Shiny roll: 1 in 4000, cosmetic only (no stat/value change).
+-- mult: event multiplier (e.g. Rainbow doubles it).
+function PetData.RollShiny(mult: number?): boolean
+	return math.random() < (Config.ShinyChance :: number) * (mult or 1)
+end
+
+function PetData.GetType(petId: string): string
+	local d = P[petId]
+	return d and d.Type or "Normal"
+end
+
+-- v25: can this species be ridden into the sky? Winged pets and Flying-type
+-- pets can fly (Hootlet the owl, the whole Zephyric line, Blightwing...).
+-- Everything else is ground-only.
+function PetData.IsFlying(petId: string): boolean
+	local d = P[petId]
+	return d ~= nil and (d.Ear == "wing" or d.Type == "Flying")
+end
+
+-- Battle stats: rarity base x stage mult x mutation mult x star mult x bond HP mult
+local STAT_BASE = {
+	Common = { 40, 32, 32, 32 },
+	Uncommon = { 52, 42, 42, 42 },
+	Rare = { 65, 55, 52, 55 },
+	Epic = { 80, 70, 65, 65 },
+	Legendary = { 95, 85, 80, 80 },
+	Secret = { 115, 100, 95, 95 },
+}
+local STAGE_MULT = { [1] = 1.0, [2] = 1.25, [3] = 1.5 }
+
+-- Bond (petting your follower) milestone HP multiplier. Kept tiny on purpose.
+function PetData.BondHPMult(bond: number?): number
+	local b = bond or 0
+	local mult = 1
+	for _, m in (Config.BondMilestones :: { { [string]: any } }) do
+		if b >= (m.Count :: number) then mult = (m.Mult :: number) end
+	end
+	return mult
+end
+
+function PetData.GetBattleStats(petId: string, mutation: string?, stars: number?, bond: number?): { [string]: number }
+	local def = P[petId]
+	assert(def, "Unknown pet " .. tostring(petId))
+	local base: { number } = (STAT_BASE :: { [string]: { number } })[def.Rarity] or STAT_BASE.Common
+	local sm = STAGE_MULT[def.Stage] or 1
+	local mm = 1
+	if mutation then
+		local mdef = (Config.Mutations :: { [string]: { [string]: number } })[mutation]
+		if mdef then mm = mdef.StatMult end
+	end
+	local starm = math.pow(Config.StarStatMult, stars or 0)
+	local bondm = PetData.BondHPMult(bond)
+	local function v(i: number): number
+		local x = base[i] * sm * mm * starm
+		if i == 1 then x *= bondm end -- bond boosts HP only
+		return math.floor(x)
+	end
+	return { HP = v(1), Atk = v(2), Def = v(3), Spd = v(4) }
+end
+
+-- Display name: nickname if the player set one, else the species name.
+function PetData.PetName(rec: { [string]: any }): string
+	local nick = rec.Nickname
+	if type(nick) == "string" and nick ~= "" then return nick end
+	local d = P[rec.PetId]
+	return (d and d.Name) or "???"
+end
+
+-- Sell value: base x mutation value mult x star value mult
+function PetData.GetValue(petId: string, mutation: string?, stars: number?): number
+	local def = P[petId]
+	local base = def and def.Value or 100
+	local mm = 1
+	if mutation then
+		local mdef = (Config.Mutations :: { [string]: { [string]: number } })[mutation]
+		if mdef then mm = mdef.ValueMult end
+	end
+	return math.floor(base * mm * math.pow(Config.StarValueMult, stars or 0))
+end
+
+-- Move set: basic move (own type, infinite) + strong move (coverage type, 5 PP)
+function PetData.GetMoveSet(petId: string): { { [string]: any } }
+	local def = P[petId]
+	assert(def, "Unknown pet " .. tostring(petId))
+	local t1 = def.Type
+	local t2 = def.Move2 or t1
+	local n1 = (TypeChart.MOVES :: { [string]: { string } })[t1]
+	local n2 = (TypeChart.MOVES :: { [string]: { string } })[t2]
+	return {
+		{ Name = n1[1], Type = t1, Power = 40, MaxPP = -1 }, -- -1 = infinite
+		{ Name = n2[2], Type = t2, Power = 75, MaxPP = Config.Move2PP },
+	}
+end
+
+-- ============ models ============
+local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, color: Color3, shape: Enum.PartType?): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.CFrame = cf
+	p.Color = color
+	p.Material = Enum.Material.SmoothPlastic
+	p.Anchored = true
+	p.CanCollide = false
+	if shape then p.Shape = shape end
+	p.Parent = parent
+	return p
+end
+
+-- Egg model for the single Pet Egg. Returns Model.
+function PetData.BuildEggModel(cracking: boolean): Model
+	local m = Instance.new("Model")
+	m.Name = "EggModel"
+	local col = C(140, 220, 120)
+	part(m, "Nest", Vector3.new(3.2, 0.6, 3.2), CFrame.new(0, 0.3, 0), C(120, 85, 55), Enum.PartType.Cylinder).Orientation = Vector3.new(0, 0, 90)
+	local e = part(m, "Egg", Vector3.new(1.8, 2.4, 1.8), CFrame.new(0, 1.7, 0), col, Enum.PartType.Block)
+	if cracking then
+		for i = 1, 3 do
+			local a = math.rad(i * 120)
+			part(m, "Crack", Vector3.new(0.12, 1.4, 0.12),
+				CFrame.new(math.cos(a) * 0.8, 1.7, math.sin(a) * 0.8) * CFrame.Angles(0.3, 0, 0.2),
+				C(255, 255, 255))
+		end
+		e.Orientation = Vector3.new(0, 0, 12)
+	end
+	local pp = Instance.new("Part")
+	pp.Name = "Primary"
+	pp.Size = Vector3.new(2, 2.4, 2)
+	pp.Transparency = 1
+	pp.Anchored = true
+	pp.CanCollide = false
+	pp.CFrame = CFrame.new(0, 1.5, 0)
+	pp.Parent = m
+	m.PrimaryPart = pp
+	return m
+end
+
+-- Custom skins: cosmetic tint + one particle accent per skin. Applied after
+-- mutation/shiny visuals so the skin wins on tint. Purely cosmetic.
+local SKIN_TINTS: { [string]: { Color3 } } = {
+	Shadow = { C(48, 34, 74), C(150, 90, 255) }, -- dark purple tint, violet wisps
+	Golden = { C(255, 200, 60), C(255, 225, 120) }, -- gold tint, gold sparkles
+	Frost = { C(170, 220, 255), C(220, 240, 255) }, -- ice-blue tint, snow sparkles
+}
+
+function PetData.ApplySkin(m: Model, skin: string?)
+	local cols = skin and SKIN_TINTS[skin] or nil
+	if not cols then return end
+	local tint, pcol = cols[1], cols[2]
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") and d.Name ~= "Primary" and d.Name ~= "TypeGem" then
+			d.Color = tint
+		end
+	end
+	local body = m:FindFirstChild("Body")
+	if body and body:IsA("BasePart") then
+		local sp = Instance.new("Sparkles")
+		sp.Name = "SkinSparkles"
+		sp.SparkleColor = pcol
+		sp.Parent = body
+	end
+end
+
+-- Cute pet model (v50 smooth animals -- not blocky at all).
+-- scale ~0.6 baby/growing, 1.0 adult. Round ball head/body, big round
+-- BGS-style eyes (white ball + pupil ball + glossy highlight), rounded
+-- muzzle/beak. 5 smooth body builds (pup/stocky/slim/blob/long) keep species
+-- distinct; smooth cylinder legs, wedge ears/beaks/fins/spikes, and family
+-- tails (bushy fox, tapering dragon + spade, fanned feathers, curved wag).
+-- shiny: cosmetic-only gold treatment -- Sparkles + a big "SHINY" billboard
+-- (AlwaysOnTop) so wild shinies read from across the forest.
+-- skin: optional cosmetic skin id ("Shadow" | "Golden" | "Frost") -- a tint +
+-- one particle accent. Purely cosmetic, stacks with mutation/shiny visuals.
+function PetData.BuildPetModel(petId: string, scale: number, mutation: string?, shiny: boolean?, skin: string?): Model
+	local def = P[petId]
+	assert(def, "Unknown pet " .. tostring(petId))
+	local m = Instance.new("Model")
+	m.Name = "Pet_" .. petId
+	local body = def.Body
+	local s = scale * def.Size
+	local dark = C(
+		math.clamp(body.R * 255 - 40, 0, 255),
+		math.clamp(body.G * 255 - 40, 0, 255),
+		math.clamp(body.B * 255 - 40, 0, 255))
+	local light = C(
+		math.clamp(body.R * 255 + 55, 0, 255),
+		math.clamp(body.G * 255 + 55, 0, 255),
+		math.clamp(body.B * 255 + 55, 0, 255))
+	local ex = def.Extras or {}
+
+	-- v50 smooth-animals: no blocky anatomy anywhere. Ball heads/bodies/
+	-- cheeks/paws/tail segments, cylinder legs/snouts/horns/whiskers, wedge
+	-- ears/beaks/fins/spikes. Big round BGS-style eyes (white ball + pupil
+	-- ball + glossy highlight). 5 smooth body builds keep species
+	-- silhouettes distinct. Same overall footprint (~3.5s tall) so plots,
+	-- followers, riding, wild spawns and bosses all still fit. "Body" name
+	-- is kept: ClientMain attaches particles/lights to it.
+
+	-- smooth body builds: species silhouettes as rounded forms
+	local buildDefs = {
+		pup = { size = Vector3.new(1.9, 1.6, 1.9), y = 0.85, leg = 0.45 },
+		stocky = { size = Vector3.new(2.4, 1.6, 2.4), y = 0.85, leg = 0.42 },
+		slim = { size = Vector3.new(1.6, 2.0, 1.7), y = 1.05, leg = 0.50 },
+		blob = { size = Vector3.new(2.3, 2.0, 2.3), y = 1.05, leg = 0.38 },
+		long = { size = Vector3.new(1.7, 1.5, 2.9), y = 0.80, leg = 0.45 },
+	}
+	local bd = buildDefs[def.Build or "pup"] or buildDefs.pup
+	-- round body
+	part(m, "Body", bd.size * s, CFrame.new(0, bd.y * s, 0), body, Enum.PartType.Ball)
+	-- light belly patch (flattened ball, everyone except grubs)
+	if def.Type ~= "Bug" then
+		part(m, "Belly", Vector3.new(bd.size.X * 0.62, bd.size.Y * 0.52, 0.55) * s,
+			CFrame.new(0, (bd.y - 0.18) * s, (bd.size.Z / 2 - 0.12) * s), light, Enum.PartType.Ball)
+	end
+	-- big round head
+	part(m, "Head", Vector3.new(2.0, 1.9, 1.9) * s,
+		CFrame.new(0, 2.05 * s, 0.25 * s), body, Enum.PartType.Ball)
+
+	-- big glossy eyes, Inferno-Cube cute: oversized whites, big pupils and a
+	-- double highlight for the wet look. v47.3: ~30% bigger than before.
+	for _, sx in { -1, 1 } do
+		local side = if sx < 0 then "L" else "R"
+		part(m, "EyeWhite" .. side, Vector3.new(0.78, 0.86, 0.46) * s,
+			CFrame.new(sx * 0.58 * s, 2.32 * s, 1.06 * s), C(255, 255, 255), Enum.PartType.Ball)
+		part(m, "Pupil" .. side, Vector3.new(0.40, 0.48, 0.24) * s,
+			CFrame.new(sx * 0.58 * s, 2.30 * s, 1.28 * s), C(25, 25, 35), Enum.PartType.Ball)
+		part(m, "EyeShine" .. side, Vector3.new(0.14, 0.14, 0.14) * s,
+			CFrame.new(sx * 0.48 * s, 2.44 * s, 1.40 * s), C(255, 255, 255), Enum.PartType.Ball)
+		part(m, "EyeShine2" .. side, Vector3.new(0.07, 0.07, 0.07) * s,
+			CFrame.new(sx * 0.68 * s, 2.20 * s, 1.40 * s), C(255, 255, 255), Enum.PartType.Ball)
+	end
+
+	-- animal family flags drive tails, horns, whiskers
+	local ear = def.Ear
+	local idLower = petId:lower()
+	local isFox = idLower:find("fox") ~= nil
+	local isDragon = (ex.Snout and ear == "wing" and not ex.FireMane) or false
+	local isBird = ex.Beak or false
+	local tb = bd.size.Z / 2 -- body back edge, for tail placement
+
+	if not (ex.Snout or ex.Beak or ex.BigJaw) then
+		-- small smile + round nose
+		part(m, "Mouth", Vector3.new(0.42, 0.14, 0.18) * s,
+			CFrame.new(0, 1.72 * s, 1.10 * s), C(90, 50, 60), Enum.PartType.Ball)
+		part(m, "Nose", Vector3.new(0.20, 0.20, 0.20) * s,
+			CFrame.new(0, 1.92 * s, 1.16 * s), C(60, 40, 50), Enum.PartType.Ball)
+	end
+	if ex.Snout then
+		-- rounded muzzle + nose (dogs, foxes, dragons, seals)
+		part(m, "Snout", Vector3.new(0.95, 0.62, 0.65) * s,
+			CFrame.new(0, 1.92 * s, 1.00 * s), dark, Enum.PartType.Ball)
+		part(m, "Nose", Vector3.new(0.30, 0.24, 0.22) * s,
+			CFrame.new(0, 2.02 * s, 1.30 * s), C(30, 25, 30), Enum.PartType.Ball)
+	end
+	if ex.Beak then
+		-- wedge beak: thick at the face, tapering forward-down
+		part(m, "Beak", Vector3.new(0.55, 0.45, 0.65) * s,
+			CFrame.new(0, 2.02 * s, 1.20 * s), C(255, 165, 40), Enum.PartType.Wedge)
+		part(m, "BeakLow", Vector3.new(0.40, 0.22, 0.45) * s,
+			CFrame.new(0, 1.82 * s, 1.18 * s), C(230, 140, 30), Enum.PartType.Wedge)
+	end
+	if ex.Sprout then
+		-- seedling sprout: cylinder stem + two rounded leaves
+		local leafCol = C(70, 185, 90)
+		part(m, "SproutStem", Vector3.new(0.14, 0.55, 0.14) * s,
+			CFrame.new(0, 3.22 * s, 0.15 * s) * CFrame.Angles(0, 0, math.pi / 2),
+			leafCol, Enum.PartType.Cylinder)
+		part(m, "SproutLeafL", Vector3.new(0.55, 0.18, 0.32) * s,
+			CFrame.new(-0.32 * s, 3.48 * s, 0.15 * s) * CFrame.Angles(0, 0, 0.40),
+			leafCol, Enum.PartType.Ball)
+		part(m, "SproutLeafR", Vector3.new(0.55, 0.18, 0.32) * s,
+			CFrame.new(0.32 * s, 3.48 * s, 0.15 * s) * CFrame.Angles(0, 0, -0.40),
+			leafCol, Enum.PartType.Ball)
+	end
+	if ex.LeafRuff then
+		-- leafy collar: rounded leaves ringing the neck
+		local leafCol = C(55, 170, 75)
+		for i = 0, 7 do
+			local ang = i * (math.pi * 2 / 8)
+			part(m, "RuffLeaf", Vector3.new(0.65, 0.30, 0.45) * s,
+				CFrame.new(math.cos(ang) * 1.15 * s, 1.20 * s, math.sin(ang) * 1.15 * s)
+					* CFrame.Angles(0, -ang, 0), leafCol, Enum.PartType.Ball)
+		end
+	end
+	if ex.BubbleDome then
+		-- clear bubble helmet (water starters)
+		local bub = part(m, "Bubble", Vector3.new(2.70, 2.70, 2.70) * s,
+			CFrame.new(0, 2.70 * s, 0.25 * s), C(180, 225, 255), Enum.PartType.Ball)
+		bub.Transparency = 0.65
+	end
+	if ex.FlameTail then
+		-- burning tail: layered neon flame balls
+		local ft = part(m, "FlameTail", Vector3.new(0.50, 0.50, 0.50) * s,
+			CFrame.new(0, 1.00 * s, -(tb + 0.25) * s), C(255, 130, 30), Enum.PartType.Ball)
+		ft.Material = Enum.Material.Neon
+		local ft2 = part(m, "FlameTip", Vector3.new(0.34, 0.34, 0.34) * s,
+			CFrame.new(0, 1.38 * s, -(tb + 0.35) * s), C(255, 210, 90), Enum.PartType.Ball)
+		ft2.Material = Enum.Material.Neon
+	end
+	if ex.SparkTail then
+		-- crackling electric tail: layered neon sparks
+		local st = part(m, "SparkTail", Vector3.new(0.46, 0.46, 0.46) * s,
+			CFrame.new(0, 1.00 * s, -(tb + 0.25) * s), C(255, 220, 80), Enum.PartType.Ball)
+		st.Material = Enum.Material.Neon
+		local st2 = part(m, "SparkTip", Vector3.new(0.30, 0.30, 0.30) * s,
+			CFrame.new(0, 1.36 * s, -(tb + 0.35) * s), C(200, 235, 255), Enum.PartType.Ball)
+		st2.Material = Enum.Material.Neon
+	end
+	if ex.BigJaw then
+		-- wide heavy rounded jaw (Abyssjaw) + fangs
+		part(m, "Jaw", Vector3.new(1.50, 0.80, 1.20) * s,
+			CFrame.new(0, 1.50 * s, 0.55 * s), dark, Enum.PartType.Ball)
+		for _, sx in { -1, 1 } do
+			part(m, "Fang" .. (if sx < 0 then "L" else "R"), Vector3.new(0.16, 0.28, 0.16) * s,
+				CFrame.new(sx * 0.45 * s, 1.28 * s, 1.05 * s), C(245, 245, 245), Enum.PartType.Ball)
+		end
+	end
+
+	-- smooth ears
+	if ear == "point" then
+		-- perky ears: stacked rounded balls read as smooth cones
+		for _, sx in { -1, 1 } do
+			local side = if sx < 0 then "L" else "R"
+			part(m, "Ear" .. side, Vector3.new(0.52, 0.62, 0.40) * s,
+				CFrame.new(sx * 0.62 * s, 2.95 * s, 0.10 * s), body, Enum.PartType.Ball)
+			part(m, "EarTip" .. side, Vector3.new(0.34, 0.42, 0.30) * s,
+				CFrame.new(sx * 0.66 * s, 3.32 * s, 0.10 * s), body, Enum.PartType.Ball)
+			part(m, "InnerEar", Vector3.new(0.28, 0.38, 0.16) * s,
+				CFrame.new(sx * 0.62 * s, 2.92 * s, 0.30 * s), light, Enum.PartType.Ball)
+		end
+	elseif ear == "flop" then
+		-- floppy ears: flattened balls hanging beside the head
+		for _, sx in { -1, 1 } do
+			local side = if sx < 0 then "L" else "R"
+			part(m, "Ear" .. side, Vector3.new(0.50, 0.95, 0.34) * s,
+				CFrame.new(sx * 1.00 * s, 2.25 * s, 0.15 * s) * CFrame.Angles(0, 0, sx * -0.22),
+				dark, Enum.PartType.Ball)
+			part(m, "InnerEar", Vector3.new(0.30, 0.60, 0.16) * s,
+				CFrame.new(sx * 1.00 * s, 2.20 * s, 0.32 * s) * CFrame.Angles(0, 0, sx * -0.22),
+				light, Enum.PartType.Ball)
+		end
+	elseif ear == "horn" then
+		-- single smooth horn with a rounded tip
+		part(m, "Horn", Vector3.new(0.30, 0.80, 0.30) * s,
+			CFrame.new(0, 3.20 * s, 0.25 * s) * CFrame.Angles(0, 0, math.pi / 2),
+			C(245, 240, 220), Enum.PartType.Cylinder)
+		part(m, "HornTip", Vector3.new(0.18, 0.18, 0.18) * s,
+			CFrame.new(0, 3.62 * s, 0.25 * s), C(255, 250, 235), Enum.PartType.Ball)
+	elseif ear == "fin" then
+		-- rounded side fins (water line)
+		for _, sx in { -1, 1 } do
+			local side = if sx < 0 then "L" else "R"
+			part(m, "Fin" .. side, Vector3.new(0.30, 0.70, 0.90) * s,
+				CFrame.new(sx * 1.00 * s, 1.75 * s, 0.10 * s) * CFrame.Angles(0, 0, sx * -0.30),
+				dark, Enum.PartType.Ball)
+		end
+	elseif ear == "wing" then
+		-- layered feathered wings: rounded slabs with light tips
+		for _, sx in { -1, 1 } do
+			local side = if sx < 0 then "L" else "R"
+			part(m, "Wing" .. side, Vector3.new(0.40, 0.95, 1.50) * s,
+				CFrame.new(sx * 1.15 * s, 2.05 * s, -0.45 * s) * CFrame.Angles(0, 0, sx * -0.50),
+				dark, Enum.PartType.Ball)
+			part(m, "WingFeather", Vector3.new(0.32, 0.70, 1.05) * s,
+				CFrame.new(sx * 1.52 * s, 1.68 * s, -0.60 * s) * CFrame.Angles(0, 0, sx * -0.50),
+				light, Enum.PartType.Ball)
+		end
+	end
+
+	-- dragon horns: smooth cylinders tilted outward
+	if isDragon then
+		for _, sx in { -1, 1 } do
+			part(m, "DragonHorn", Vector3.new(0.24, 0.62, 0.24) * s,
+				CFrame.new(sx * 0.55 * s, 3.18 * s, 0.05 * s) * CFrame.Angles(0, 0, math.pi / 2 - sx * 0.30),
+				C(245, 240, 220), Enum.PartType.Cylinder)
+		end
+	end
+	-- fox whiskers (thin cylinders) + cheek fluff
+	if isFox and ex.Snout then
+		for _, sx in { -1, 1 } do
+			part(m, "CheekFluff", Vector3.new(0.38, 0.38, 0.38) * s,
+				CFrame.new(sx * 0.80 * s, 1.85 * s, 0.80 * s), light, Enum.PartType.Ball)
+			for i = 0, 1 do
+				part(m, "Whisker", Vector3.new(0.60, 0.05, 0.05) * s,
+					CFrame.new(sx * 0.72 * s, (1.88 + i * 0.12) * s, 1.22 * s) * CFrame.Angles(0, 0, sx * -0.08),
+					C(245, 245, 245), Enum.PartType.Cylinder)
+			end
+		end
+	end
+	-- bunny buck teeth
+	if ex.CottonTail then
+		part(m, "BuckTeeth", Vector3.new(0.26, 0.30, 0.16) * s,
+			CFrame.new(0, 1.58 * s, 1.12 * s), C(250, 250, 250), Enum.PartType.Ball)
+	end
+	-- electric cheek pouches
+	if ex.VoltCheeks then
+		for _, sx in { -1, 1 } do
+			local vc = part(m, "VoltCheek", Vector3.new(0.34, 0.34, 0.34) * s,
+				CFrame.new(sx * 0.85 * s, 1.88 * s, 1.00 * s), C(255, 215, 60), Enum.PartType.Ball)
+			vc.Material = Enum.Material.Neon
+		end
+	end
+
+	-- smooth cylinder legs + round paws
+	local legX, legZ = bd.size.X * 0.30, bd.size.Z * 0.28
+	local legH = bd.leg + 0.15
+	for _, xs in { -1, 1 } do
+		for _, zs in { -1, 1 } do
+			part(m, "Leg", Vector3.new(bd.leg, legH, bd.leg) * s,
+				CFrame.new(xs * legX * s, (legH / 2) * s, zs * legZ * s) * CFrame.Angles(0, 0, math.pi / 2),
+				dark, Enum.PartType.Cylinder)
+			if not ex.Flippers then
+				part(m, "Paw", Vector3.new(bd.leg * 1.15, bd.leg * 0.70, bd.leg * 1.30) * s,
+					CFrame.new(xs * legX * s, 0.18 * s, (zs * legZ + bd.leg * 0.35) * s),
+					light, Enum.PartType.Ball)
+			end
+		end
+	end
+	if ex.Flippers then
+		-- turtles: swap legs for rounded flippers
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and d.Name == "Leg" then d:Destroy() end
+		end
+		for _, xz in { { -0.85, 0.45 }, { 0.85, 0.45 }, { -0.85, -0.45 }, { 0.85, -0.45 } } do
+			part(m, "Flipper", Vector3.new(1.00, 0.30, 0.70) * s,
+				CFrame.new(xz[1] * s, 0.22 * s, xz[2] * s)
+					* CFrame.Angles(0, if xz[1] < 0 then 0.30 else -0.30, 0), dark, Enum.PartType.Ball)
+		end
+	end
+	if ex.LeafCrown then
+		-- rounded leaf ring on the head
+		local leafCol = C(70, 185, 90)
+		for i = 0, 5 do
+			local ang = i * (math.pi * 2 / 6)
+			part(m, "Leaf", Vector3.new(0.45, 0.45, 0.45) * s,
+				CFrame.new(math.cos(ang) * 0.70 * s, 3.05 * s, 0.15 * s + math.sin(ang) * 0.70 * s),
+				leafCol, Enum.PartType.Ball)
+		end
+	end
+	-- top of the body ellipsoid at a given z, so spikes sit ON the back
+	local function backTop(z: number): number
+		local zn = z / (bd.size.Z / 2)
+		return bd.y + (bd.size.Y / 2) * math.sqrt(math.max(0.05, 1 - zn * zn))
+	end
+	if ex.BackSpikes then
+		-- smooth swept-back spikes riding the spine
+		for _, z in { -0.35, -0.55, -0.75, -0.92 } do
+			part(m, "Spike", Vector3.new(0.36, 0.60, 0.36) * s,
+				CFrame.new(0, (backTop(z) + 0.12) * s, z * s) * CFrame.Angles(-0.45, 0, 0),
+				C(245, 240, 220), Enum.PartType.Wedge)
+		end
+	end
+	if ex.FireMane then
+		-- puffy flame mane: neon balls ringing the neck
+		for i = 0, 5 do
+			local ang = i * (math.pi * 2 / 6)
+			local fcol = if i % 2 == 0 then C(255, 120, 40) else C(255, 200, 70)
+			local f = part(m, "Flame", Vector3.new(0.60, 0.60, 0.60) * s,
+				CFrame.new(math.cos(ang) * 1.00 * s, 1.40 * s, 0.10 * s + math.sin(ang) * 1.00 * s),
+				fcol, Enum.PartType.Ball)
+			f.Material = Enum.Material.Neon
+		end
+	end
+	if ex.AquaFins then
+		-- rounded dorsal fin + tail fin
+		local finCol = C(140, 200, 255)
+		part(m, "DorsalFin", Vector3.new(0.28, 0.90, 1.10) * s,
+			CFrame.new(0, 2.35 * s, -0.55 * s) * CFrame.Angles(-0.40, 0, 0), finCol, Enum.PartType.Wedge)
+		part(m, "TailFin", Vector3.new(0.22, 0.70, 0.55) * s,
+			CFrame.new(0, 1.00 * s, -(tb + 0.30) * s), finCol, Enum.PartType.Wedge)
+	end
+	if ex.Comb then
+		-- round red comb bumps along the head
+		for i, z in { 0.95, 0.55, 0.15 } do
+			part(m, "Comb", Vector3.new(0.36, 0.36, 0.36) * s,
+				CFrame.new(0, (2.95 + (if i == 2 then 0.10 else 0)) * s, z * s),
+				C(225, 70, 70), Enum.PartType.Ball)
+		end
+	end
+	if ex.CottonTail then
+		-- fluffy round tail
+		part(m, "CottonTail", Vector3.new(0.60, 0.60, 0.60) * s,
+			CFrame.new(0, 0.80 * s, -(tb + 0.10) * s), C(245, 245, 245), Enum.PartType.Ball)
+	end
+	if ex.IceShards then
+		-- ice shards riding the back
+		for _, z in { -0.35, -0.60, -0.85 } do
+			part(m, "IceShard", Vector3.new(0.34, 0.55, 0.34) * s,
+				CFrame.new(0, (backTop(z) + 0.12) * s, z * s) * CFrame.Angles(-0.35, 0, 0),
+				C(170, 220, 255), Enum.PartType.Wedge)
+		end
+	end
+	if ex.RockSpikes or ex.LavaSpikes then
+		-- rocky nubs down the back (glowing for magma)
+		local rcol = if ex.LavaSpikes then C(255, 110, 40) else C(120, 110, 100)
+		for _, z in { -0.35, -0.55, -0.75, -0.92 } do
+			local rsp = part(m, "RockSpike", Vector3.new(0.42, 0.55, 0.42) * s,
+				CFrame.new(0, (backTop(z) + 0.12) * s, z * s) * CFrame.Angles(-0.40, 0, 0),
+				rcol, Enum.PartType.Wedge)
+			if ex.LavaSpikes then rsp.Material = Enum.Material.Neon end
+		end
+	end
+	if ex.EyeDiscs then
+		-- owls: pale rounded facial discs framing the big eyes
+		part(m, "DiscL", Vector3.new(0.95, 1.00, 0.30) * s,
+			CFrame.new(-0.55 * s, 2.32 * s, 0.92 * s), C(240, 240, 240), Enum.PartType.Ball)
+		part(m, "DiscR", Vector3.new(0.95, 1.00, 0.30) * s,
+			CFrame.new(0.55 * s, 2.32 * s, 0.92 * s), C(240, 240, 240), Enum.PartType.Ball)
+	end
+	if ex.HeadCrest then
+		-- sleek swept-back crest
+		part(m, "Crest", Vector3.new(0.34, 0.80, 0.55) * s,
+			CFrame.new(0, 3.05 * s, -0.30 * s) * CFrame.Angles(-0.50, 0, 0), dark, Enum.PartType.Ball)
+	end
+	if ex.TailTip and not isFox then
+		-- light-colored tip on the nub tail (foxes get a full bushy tail below)
+		part(m, "TailTip", Vector3.new(0.34, 0.34, 0.34) * s,
+			CFrame.new(0, 0.98 * s, -(tb + 0.22) * s), C(250, 245, 230), Enum.PartType.Ball)
+	end
+	if ex.MoonMark then
+		-- lunar fox: glowing mark on the forehead
+		local mk = part(m, "MoonMark", Vector3.new(0.42, 0.42, 0.20) * s,
+			CFrame.new(0, 2.85 * s, 0.78 * s), C(255, 245, 170), Enum.PartType.Ball)
+		mk.Material = Enum.Material.Neon
+	end
+	if ex.AmberCore then
+		-- fossil pets: glowing amber core on the chest
+		local core = part(m, "AmberCore", Vector3.new(0.62, 0.62, 0.62) * s,
+			CFrame.new(0, 0.95 * s, (bd.size.Z / 2 - 0.15) * s), C(255, 170, 60), Enum.PartType.Ball)
+		core.Material = Enum.Material.Neon
+	end
+	if ex.WindSwirl then
+		-- sky line: soft glowing wisps circling the body
+		for i = 0, 2 do
+			local a = i * (math.pi * 2 / 3)
+			local w = part(m, "WindWisp" .. i, Vector3.new(0.45, 0.45, 0.45) * s,
+				CFrame.new(math.cos(a) * 1.35 * s, 0.95 * s, math.sin(a) * 1.35 * s),
+				C(235, 245, 255), Enum.PartType.Ball)
+			w.Material = Enum.Material.Neon
+			w.Transparency = 0.4
+		end
+	end
+	if ex.GlowEyes then
+		-- dark pets: glowing pupils (extras value is the eye Color3)
+		local ecol: Color3 = ex.GlowEyes
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and (d.Name == "PupilL" or d.Name == "PupilR") then
+				d.Color = ecol
+				d.Material = Enum.Material.Neon
+			end
+		end
+	end
+	if def.Tail and not ex.FlameTail and not ex.SparkTail then
+		-- smooth tails by animal family; tb = body back edge
+		if isFox then
+			-- big bushy fox tail: swelling middle + light tip
+			part(m, "Tail1", Vector3.new(0.55, 0.55, 0.55) * s,
+				CFrame.new(0, 0.95 * s, -(tb + 0.15) * s), body, Enum.PartType.Ball)
+			part(m, "Tail2", Vector3.new(0.74, 0.74, 0.74) * s,
+				CFrame.new(0, 1.22 * s, -(tb + 0.62) * s), body, Enum.PartType.Ball)
+			part(m, "TailTip", Vector3.new(0.50, 0.50, 0.50) * s,
+				CFrame.new(0, 1.58 * s, -(tb + 0.95) * s), C(250, 245, 230), Enum.PartType.Ball)
+		elseif isDragon then
+			-- long tapering dragon tail with a wedge spade tip
+			part(m, "Tail1", Vector3.new(0.45, 0.45, 0.45) * s,
+				CFrame.new(0, 0.80 * s, -(tb + 0.20) * s), dark, Enum.PartType.Ball)
+			part(m, "Tail2", Vector3.new(0.36, 0.36, 0.36) * s,
+				CFrame.new(0, 0.72 * s, -(tb + 0.65) * s), dark, Enum.PartType.Ball)
+			part(m, "Tail3", Vector3.new(0.27, 0.27, 0.27) * s,
+				CFrame.new(0, 0.68 * s, -(tb + 1.02) * s), dark, Enum.PartType.Ball)
+			part(m, "TailSpade", Vector3.new(0.50, 0.55, 0.22) * s,
+				CFrame.new(0, 0.70 * s, -(tb + 1.35) * s), dark, Enum.PartType.Wedge)
+		elseif isBird then
+			-- fanned rounded tail feathers
+			for i = -1, 1 do
+				part(m, "TailFeather", Vector3.new(0.34, 0.16, 0.95) * s,
+					CFrame.new(i * 0.30 * s, 0.95 * s, -(tb + 0.40) * s) * CFrame.Angles(0, i * 0.35, 0),
+					dark, Enum.PartType.Ball)
+			end
+		elseif ear == "fin" or def.Type == "Water" then
+			-- aquatic nub tail (AquaFins pets get a wedge tail fin above)
+			part(m, "Tail", Vector3.new(0.50, 0.50, 0.50) * s,
+				CFrame.new(0, 0.85 * s, -(tb + 0.05) * s), dark, Enum.PartType.Ball)
+		elseif def.Type == "Bug" then
+			-- grub: tiny nub
+			part(m, "Tail", Vector3.new(0.40, 0.40, 0.40) * s,
+				CFrame.new(0, 0.70 * s, -(tb + 0.05) * s), dark, Enum.PartType.Ball)
+		else
+			-- mammals: curved tail of shrinking balls
+			part(m, "Tail1", Vector3.new(0.42, 0.42, 0.42) * s,
+				CFrame.new(0, 0.95 * s, -(tb + 0.12) * s), dark, Enum.PartType.Ball)
+			part(m, "Tail2", Vector3.new(0.34, 0.34, 0.34) * s,
+				CFrame.new(0, 1.28 * s, -(tb + 0.30) * s), dark, Enum.PartType.Ball)
+		end
+	end
+	if def.Shell then
+		-- smooth dome shell over the back
+		part(m, "Shell", Vector3.new(2.50, 1.70, 2.50) * s,
+			CFrame.new(0, 1.20 * s, -0.35 * s), dark, Enum.PartType.Ball)
+		-- rounded shell plates (scutes) on the dome
+		part(m, "ShellPlate", Vector3.new(0.90, 0.40, 0.90) * s,
+			CFrame.new(0, 1.95 * s, -0.35 * s), light, Enum.PartType.Ball)
+		for _, xz in { { -0.70, -0.35 }, { 0.70, -0.35 }, { 0, -1.05 } } do
+			part(m, "ShellPlate", Vector3.new(0.70, 0.35, 0.70) * s,
+				CFrame.new(xz[1] * s, 1.78 * s, (xz[2] - 0.35) * s), light, Enum.PartType.Ball)
+		end
+	end
+	-- mutation visuals (skip the type gem)
+	if mutation == "Golden" or mutation == "Double" then
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and d.Name ~= "Primary" and d.Name ~= "TypeGem" then d.Color = C(255, 200, 40) end
+		end
+		local sp = Instance.new("Sparkles")
+		sp.SparkleColor = C(255, 220, 80)
+		sp.Parent = m:FindFirstChild("Body")
+	elseif mutation == "Rainbow" or mutation == "Double" then
+		local cols = { C(255, 90, 90), C(255, 200, 90), C(140, 255, 140), C(120, 180, 255), C(200, 140, 255) }
+		local i = 1
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and d.Name ~= "Primary" and d.Name ~= "TypeGem" then
+				d.Color = cols[i]
+				i = i % #cols + 1
+			end
+		end
+		local sp = Instance.new("Sparkles")
+		sp.SparkleColor = C(255, 255, 255)
+		sp.Parent = m:FindFirstChild("Body")
+	elseif mutation == "Void" then
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and d.Name ~= "Primary" and d.Name ~= "TypeGem" then
+				d.Color = C(45, 30, 70)
+			end
+		end
+		local pe = Instance.new("ParticleEmitter")
+		pe.Color = ColorSequence.new(C(120, 60, 200))
+		pe.Size = NumberSequence.new(0.6)
+		pe.Rate = 12
+		pe.Lifetime = NumberRange.new(0.8, 1.4)
+		pe.Speed = NumberRange.new(1, 3)
+		pe.Parent = m:FindFirstChild("Body")
+	end
+
+	-- v47.3: elemental aura — soft type-colored particles around every pet, like
+	-- the flames around the Inferno Cube. Low rate so a garden of pets stays fast.
+	local auraByType = {
+		Fire = { C(255, 110, 25), C(255, 195, 70) },
+		Water = { C(70, 160, 255), C(170, 225, 255) },
+		Grass = { C(85, 195, 85), C(175, 255, 145) },
+		Electric = { C(255, 215, 75), C(255, 255, 175) },
+		Dark = { C(115, 55, 195), C(175, 115, 255) },
+		Ice = { C(150, 215, 255), C(230, 250, 255) },
+		Ground = { C(195, 150, 95), C(235, 205, 150) },
+		Flying = { C(180, 200, 235), C(235, 245, 255) },
+		Bug = { C(150, 200, 70), C(210, 245, 140) },
+		Normal = { C(200, 190, 175), C(240, 235, 225) },
+	}
+	local auraCols = auraByType[def.Type] or auraByType.Normal
+	do
+		local bodyPart = m:FindFirstChild("Body")
+		if bodyPart then
+			local aura = Instance.new("ParticleEmitter")
+			aura.Name = "TypeAura"
+			aura.Color = ColorSequence.new(auraCols[1], auraCols[2])
+			aura.Size = NumberSequence.new(0.45)
+			aura.Rate = 8
+			aura.Lifetime = NumberRange.new(0.9, 1.5)
+			aura.Speed = NumberRange.new(1, 2.5)
+			aura.SpreadAngle = Vector2.new(360, 360)
+			aura.Parent = bodyPart
+		end
+	end
+
+	-- shiny treatment: gold sparkles + a billboard visible from far away.
+	-- Purely cosmetic -- no stat or value change.
+	if shiny then
+		local body = m:FindFirstChild("Body")
+		if body then
+			local sp = Instance.new("Sparkles")
+			sp.Name = "ShinySparkles"
+			sp.SparkleColor = C(255, 215, 90)
+			sp.Parent = body
+			local bb = Instance.new("BillboardGui")
+			bb.Name = "ShinyTag"
+			bb.Size = UDim2.new(0, 150, 0, 40)
+			bb.StudsOffset = Vector3.new(0, 4.0 * s, 0)
+			bb.AlwaysOnTop = true
+			local tl = Instance.new("TextLabel")
+			tl.Size = UDim2.new(1, 0, 1, 0)
+			tl.BackgroundTransparency = 0.25
+			tl.BackgroundColor3 = C(120, 80, 10)
+			tl.Text = "✨ SHINY"
+			tl.TextScaled = true
+			tl.TextColor3 = C(255, 235, 150)
+			tl.Font = Enum.Font.FredokaOne
+			tl.Parent = bb
+			bb.Adornee = body
+			bb.Parent = body
+		end
+	end
+
+	local pp = Instance.new("Part")
+	pp.Name = "Primary"
+	pp.Size = Vector3.new(2.4, 3.4, 2.4) * s
+	pp.Transparency = 1
+	pp.Anchored = true
+	pp.CanCollide = false
+	pp.CFrame = CFrame.new(0, 1.7 * s, 0)
+	pp.Parent = m
+	m.PrimaryPart = pp
+
+	PetData.ApplySkin(m, skin)
+
+	return m
+end
+
+return PetData
