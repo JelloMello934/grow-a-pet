@@ -282,7 +282,7 @@ local function buildSpawnArea()
 	pr2.RequiresLineOfSight = false
 	pr2.Parent = sellNPC:WaitForChild("Head")
 	pr2.Triggered:Connect(function(player: Player)
-		-- v46: Open the Pets bag so Deacon can pick which pets to sell
+		-- v46: Open the Pets bag so the player can pick which pets to sell
 		-- (each pet card has its own 💰 Sell button)
 		R("OpenSell"):FireClient(player)
 	end)
