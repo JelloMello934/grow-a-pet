@@ -40,6 +40,7 @@ export type Plot = {
 	GrowTime: number,
 	WaterUntil: number, -- os.clock cooldown
 	SuperWater: number, -- stacked super-water crits, consumed on harvest
+	EvoStone: string?, -- v24: evolution stone set on this plot (consumed only if it forces evolution)
 	Model: Model?,
 	ReadyBillboard: BillboardGui?,
 	-- v21: rot / infestation state (timer ticks ONLINE ONLY — the per-second
@@ -436,6 +437,11 @@ function GardenManager.RestorePlots(player: Player)
 			else
 				continue
 			end
+			-- v47.6: keep earned harvest modifiers across saves/rejoins —
+			-- super-water stacks and a set evolution stone belong to this
+			-- growth cycle until harvest consumes them.
+			plot.SuperWater = s.SuperWater or 0
+			plot.EvoStone = s.EvoStone
 			-- offline catch-up (capped)
 			local plantT: number = s.PlantTime or now
 			local offline = math.min(now - plantT, Config.MaxOfflineProgress)
@@ -482,6 +488,8 @@ function GardenManager.SnapshotPlots(player: Player)
 				PetId = plot.PetId,
 				Progress = plot.Progress,
 				GrowTime = plot.GrowTime,
+				SuperWater = plot.SuperWater,
+				EvoStone = plot.EvoStone,
 				PlantTime = os.time(),
 				-- v21: rot state (timer only ever advanced while online)
 				RotOnline = plot.RotOnline,
@@ -623,17 +631,21 @@ function GardenManager.OnPlotClicked(player: Player, garden: Garden, plot: Plot)
 			if Remotes then R("Notify"):FireClient(player, "Only the owner can harvest this!", "warn") end
 			return
 		end
-		GrowthSystem.HarvestPlot(player, plot.Index)
-		-- v47.5: golden harvest burst — the payoff moment should feel rewarding
-		local hburst = Instance.new("ParticleEmitter")
-		hburst.Color = ColorSequence.new(Color3.fromRGB(255, 215, 90), Color3.fromRGB(255, 245, 180))
-		hburst.Size = NumberSequence.new(0.55)
-		hburst.Rate = 0
-		hburst.Lifetime = NumberRange.new(0.8, 1.4)
-		hburst.Speed = NumberRange.new(5, 10)
-		hburst.Parent = plot.Part
-		hburst:Emit(36)
-		task.delay(2, function() hburst:Destroy() end)
+		local harvested = GrowthSystem.HarvestPlot(player, plot.Index)
+		-- v47.6: celebrate only after the harvest actually clears the plot
+		-- (a rate-limited/failed harvest leaves it Ready and gets no burst).
+		if harvested ~= false and plot.State ~= "Ready" then
+			-- v47.5: golden harvest burst — the payoff moment should feel rewarding
+			local hburst = Instance.new("ParticleEmitter")
+			hburst.Color = ColorSequence.new(Color3.fromRGB(255, 215, 90), Color3.fromRGB(255, 245, 180))
+			hburst.Size = NumberSequence.new(0.55)
+			hburst.Rate = 0
+			hburst.Lifetime = NumberRange.new(0.8, 1.4)
+			hburst.Speed = NumberRange.new(5, 10)
+			hburst.Parent = plot.Part
+			hburst:Emit(36)
+			task.delay(2, function() hburst:Destroy() end)
+		end
 	end
 end
 
