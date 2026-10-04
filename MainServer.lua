@@ -472,28 +472,45 @@ local function buildMapDressing()
 		makePath("LakePath" .. i, sdir * 26, shore - sdir * 6, 6)
 		makeLabel("DockLabel" .. i, ep + Vector3.new(0, 8, 0), "🎣 Fishing", Color3.fromRGB(170, 220, 255))
 	end
-	-- battle / trade pads just south of spawn (core-loop social spots)
-	local battlePad = disc("BattlePad", 10, 0.5, Vector3.new(16, 0.25, 34), Color3.fromRGB(170, 90, 220))
-	local tradePad = disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
-	makeLabel("BattleLabel", Vector3.new(27, 7, 36), "⚔️ Battle", Color3.fromRGB(255, 200, 255), 120)
-	makeLabel("TradeLabel", Vector3.new(-27, 7, 36), "🤝 Trade", Color3.fromRGB(190, 255, 255), 120)
-	-- stepping on a pad opens the Players panel on that player's client,
-	-- where the actual Battle / Trade per-player buttons live.
+	-- battle / trade pads south of spawn, offset so they sit BESIDE the
+	-- garden/lake paths instead of on top of them.
+	disc("BattlePad", 10, 0.5, Vector3.new(40, 0.25, 44), Color3.fromRGB(170, 90, 220))
+	disc("TradePad", 10, 0.5, Vector3.new(-40, 0.25, 44), Color3.fromRGB(60, 190, 200))
+	makeLabel("BattleLabel", Vector3.new(40, 7, 44), "⚔️ Battle", Color3.fromRGB(255, 200, 255), 120)
+	makeLabel("TradeLabel", Vector3.new(-40, 7, 44), "🤝 Trade", Color3.fromRGB(190, 255, 255), 120)
+	-- standing on a pad opens the Players panel on that player's client,
+	-- where the actual Battle / Trade per-player buttons live. Proximity
+	-- loop (not Touched) so it always fires; 3s per-player cooldown.
+	local padDefs = {
+		{ Pos = Vector3.new(40, 0, 44), Hint = "⚔️ Pick a player to challenge to a battle!" },
+		{ Pos = Vector3.new(-40, 0, 44), Hint = "🤝 Pick a player to trade with!" },
+	}
 	local padCooldown: { [Player]: number } = {}
-	local function wirePad(pad: Part, hint: string)
-		pad.Touched:Connect(function(hit: BasePart)
-			local char = hit.Parent
-			local player = char and Players:GetPlayerFromCharacter(char :: Model)
-			if not player then return end
-			local now = os.clock()
-			if padCooldown[player] and now - padCooldown[player] < 2 then return end
-			padCooldown[player] = now
-			R("OpenPanel"):FireClient(player, "Visit")
-			R("Notify"):FireClient(player, hint, "ok")
-		end)
-	end
-	wirePad(battlePad, "⚔️ Pick a player to challenge to a battle!")
-	wirePad(tradePad, "🤝 Pick a player to trade with!")
+	task.spawn(function()
+		while true do
+			for _, player in Players:GetPlayers() do
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local p = (hrp :: BasePart).Position
+					for _, def in padDefs do
+						local dx, dz = p.X - def.Pos.X, p.Z - def.Pos.Z
+						if dx * dx + dz * dz < 100 then -- within 10 studs
+							local now = os.clock()
+							if not padCooldown[player] or now - padCooldown[player] > 3 then
+								padCooldown[player] = now
+								R("OpenPanel"):FireClient(player, "Visit")
+								R("Notify"):FireClient(player, def.Hint, "ok")
+								print("🟣 Pad triggered for " .. player.Name)
+							end
+							break
+						end
+					end
+				end
+			end
+			task.wait(0.25)
+		end
+	end)
 	-- spawn signpost: the whole loop written ON the board (SurfaceGui, not a
 	-- floating billboard), turned to face the spawn point.
 	mk("SignPost", Vector3.new(0.6, 5, 0.6), Vector3.new(10, 2.5, -14), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, true)
