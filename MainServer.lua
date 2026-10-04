@@ -61,7 +61,7 @@ local REMOTE_NAMES = {
 	"CoinsChanged", "SeedsChanged", "ItemsChanged", "InventoryChanged", "BuffsChanged",
 	"CollectionUpdate", "SettingsChanged", "GardenInfo", "PlotState", -- PlotState: GrowthSystem growth/ready sync (missing it froze the growth tick)
 	"ShopStock", "EventChanged", "PhaseChanged", "Announce", "Notify", "Leaderboards",
-	"DailyInfo", "VisitList", "OpenShop", "OpenSell",
+	"DailyInfo", "VisitList", "OpenShop", "OpenSell", "OpenPanel", -- OpenPanel (v48): map pads ask the client to open a panel
 	"StarterPrompt", "StarterChanged", "TeamChanged",
 	"BattleInvite", "BattleInviteExpired", "BattleStart", "BattleUpdate", "BattleEnd",
 	"TradeInvite", "TradeInviteExpired", "TradeStart", "TradeUpdate", "TradeEnd",
@@ -473,10 +473,27 @@ local function buildMapDressing()
 		makeLabel("DockLabel" .. i, ep + Vector3.new(0, 8, 0), "🎣 Fishing", Color3.fromRGB(170, 220, 255))
 	end
 	-- battle / trade pads just south of spawn (core-loop social spots)
-	disc("BattlePad", 10, 0.5, Vector3.new(16, 0.25, 34), Color3.fromRGB(170, 90, 220))
-	disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
+	local battlePad = disc("BattlePad", 10, 0.5, Vector3.new(16, 0.25, 34), Color3.fromRGB(170, 90, 220))
+	local tradePad = disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
 	makeLabel("BattleLabel", Vector3.new(27, 7, 36), "⚔️ Battle", Color3.fromRGB(255, 200, 255), 120)
 	makeLabel("TradeLabel", Vector3.new(-27, 7, 36), "🤝 Trade", Color3.fromRGB(190, 255, 255), 120)
+	-- stepping on a pad opens the Players panel on that player's client,
+	-- where the actual Battle / Trade per-player buttons live.
+	local padCooldown: { [Player]: number } = {}
+	local function wirePad(pad: Part, hint: string)
+		pad.Touched:Connect(function(hit: BasePart)
+			local char = hit.Parent
+			local player = char and Players:GetPlayerFromCharacter(char :: Model)
+			if not player then return end
+			local now = os.clock()
+			if padCooldown[player] and now - padCooldown[player] < 2 then return end
+			padCooldown[player] = now
+			R("OpenPanel"):FireClient(player, "Visit")
+			R("Notify"):FireClient(player, hint, "ok")
+		end)
+	end
+	wirePad(battlePad, "⚔️ Pick a player to challenge to a battle!")
+	wirePad(tradePad, "🤝 Pick a player to trade with!")
 	-- spawn signpost: the whole loop written ON the board (SurfaceGui, not a
 	-- floating billboard), turned to face the spawn point.
 	mk("SignPost", Vector3.new(0.6, 5, 0.6), Vector3.new(10, 2.5, -14), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, true)
