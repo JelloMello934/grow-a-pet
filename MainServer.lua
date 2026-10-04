@@ -59,7 +59,7 @@ local SpinSystem = require(script.Parent:WaitForChild("SpinSystem")) -- v16: dai
 local REMOTE_NAMES = {
 	-- server -> client
 	"CoinsChanged", "SeedsChanged", "ItemsChanged", "InventoryChanged", "BuffsChanged",
-	"CollectionUpdate", "SettingsChanged", "GardenInfo",
+	"CollectionUpdate", "SettingsChanged", "GardenInfo", "PlotState", -- PlotState: GrowthSystem growth/ready sync (missing it froze the growth tick)
 	"ShopStock", "EventChanged", "PhaseChanged", "Announce", "Notify", "Leaderboards",
 	"DailyInfo", "VisitList", "OpenShop", "OpenSell",
 	"StarterPrompt", "StarterChanged", "TeamChanged",
