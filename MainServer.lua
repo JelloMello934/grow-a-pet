@@ -370,10 +370,35 @@ local function startOceanSafety()
 end
 
 -- ---- map dressing (v48, from MAP_DESIGN_V48) ---------------------------------
+-- The command-bar forest scatters trees with no lake clearance, so trees end
+-- up standing in the water. Clear any trunk/canopy part inside a lake radius.
+local function clearLakeTrees()
+	local lakes = { Vector3.new(0, 0, -250), Vector3.new(-217, 0, 125), Vector3.new(217, 0, 125) }
+	local removed = 0
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("BasePart") then
+			local nm = d.Name
+			if string.find(nm, "Trunk") or string.find(nm, "Canopy") or string.find(nm, "ForestLeaves") then
+				local p = d.Position
+				for _, l in lakes do
+					local dx, dz = p.X - l.X, p.Z - l.Z
+					if dx * dx + dz * dz < 96 * 96 then
+						local ok = pcall(function() d:Destroy() end)
+						if ok then removed += 1 end
+						break
+					end
+				end
+			end
+		end
+	end
+	if removed > 0 then print("🌲 clearLakeTrees: removed " .. removed .. " tree parts from lakes") end
+end
+
 -- Runtime-built so JarvisSync delivers it: sand paths, battle/trade pads,
 -- spawn signpost and floating zone labels. Geometry matches GardenManager's
 -- garden ring (r=140) and Config lakes/docks, so nothing needs a rebuild.
 local function buildMapDressing()
+	clearLakeTrees()
 	if workspace:FindFirstChild("MapDressing") then return end
 	local folder = Instance.new("Folder")
 	folder.Name = "MapDressing"
@@ -422,20 +447,33 @@ local function buildMapDressing()
 		local p = mk(name, Vector3.new(width, 0.12, len), Vector3.new(mid.X, 0.08, mid.Z), Color3.fromRGB(232, 214, 160), Enum.Material.Sand, false)
 		p.CFrame = CFrame.lookAt(Vector3.new(mid.X, 0.08, mid.Z), Vector3.new(toPos.X, 0.08, toPos.Z))
 	end
-	-- sand paths: plaza edge -> each garden, plaza -> each dock end
+	-- sand paths: plaza -> each garden GATE (same dominant-axis gate math as
+	-- GardenManager.EnsureClaimPrompt) and plaza -> each dock shore, so the
+	-- paths actually line up with where players walk and claim.
 	local gardens = {
 		Vector3.new(140, 0, 0), Vector3.new(70, 0, -121), Vector3.new(-70, 0, -121),
 		Vector3.new(-140, 0, 0), Vector3.new(-70, 0, 121), Vector3.new(70, 0, 121),
 	}
 	for i, g in gardens do
-		local dir = Vector3.new(g.X, 0, g.Z).Unit
-		makePath("GardenPath" .. i, dir * 30, dir * 104, 8)
+		local gdx, gdz = -g.X, -g.Z
+		local gate: Vector3
+		if math.abs(gdx) > math.abs(gdz) then
+			gate = g + Vector3.new(if gdx > 0 then 41 else -41, 0, 0)
+		else
+			gate = g + Vector3.new(0, 0, if gdz > 0 then 31 else -31)
+		end
+		local gdir = Vector3.new(gate.X, 0, gate.Z).Unit
+		makePath("GardenPath" .. i, gdir * 26, gate - gdir * 4, 8)
 		makeLabel("GardenLabel" .. i, g + Vector3.new(0, 13, 0), "🌱 Garden " .. i, Color3.fromRGB(190, 255, 190))
 	end
+	local lakeCenters = { Vector3.new(0, 0, -250), Vector3.new(-217, 0, 125), Vector3.new(217, 0, 125) }
 	local dockEnds = { Vector3.new(45, 0, -250), Vector3.new(-171, 0, 125), Vector3.new(171, 0, 125) }
 	for i, ep in dockEnds do
-		local dir = Vector3.new(ep.X, 0, ep.Z).Unit
-		makePath("LakePath" .. i, dir * 30, ep - dir * 14, 6)
+		local lake = lakeCenters[i]
+		local side = if ep.X >= lake.X then 1 else -1
+		local shore = Vector3.new(lake.X + side * 88, 0, lake.Z)
+		local sdir = Vector3.new(shore.X, 0, shore.Z).Unit
+		makePath("LakePath" .. i, sdir * 26, shore - sdir * 6, 6)
 		makeLabel("DockLabel" .. i, ep + Vector3.new(0, 8, 0), "🎣 Fishing", Color3.fromRGB(170, 220, 255))
 	end
 	-- battle / trade pads just south of spawn (core-loop social spots)
@@ -443,10 +481,23 @@ local function buildMapDressing()
 	disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
 	makeLabel("BattleLabel", Vector3.new(16, 7, 34), "⚔️ Battle", Color3.fromRGB(255, 200, 255))
 	makeLabel("TradeLabel", Vector3.new(-16, 7, 34), "🤝 Trade", Color3.fromRGB(190, 255, 255))
-	-- spawn signpost: the whole loop on one board
+	-- spawn signpost: the whole loop written ON the board (SurfaceGui, not a
+	-- floating billboard), turned to face the spawn point.
 	mk("SignPost", Vector3.new(0.6, 5, 0.6), Vector3.new(10, 2.5, -14), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, true)
-	mk("SignBoard", Vector3.new(12, 3, 0.4), Vector3.new(10, 5.6, -14), Color3.fromRGB(90, 68, 44), Enum.Material.Wood, false)
-	makeLabel("SignText", Vector3.new(10, 8.2, -14), "🌱 CLAIM → GROW → EVOLVE → ⚔️ BATTLE → 🤝 TRADE", Color3.fromRGB(255, 255, 255))
+	local board = mk("SignBoard", Vector3.new(13, 3.4, 0.4), Vector3.new(10, 5.6, -14), Color3.fromRGB(90, 68, 44), Enum.Material.Wood, false)
+	board.CFrame = CFrame.lookAt(board.Position, Vector3.new(0, 5.6, 0))
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Front
+	sg.Parent = board
+	local stl = Instance.new("TextLabel")
+	stl.Size = UDim2.new(1, 0, 1, 0)
+	stl.BackgroundTransparency = 1
+	stl.Text = "🌱 CLAIM → GROW → EVOLVE\n⚔️ BATTLE → 🤝 TRADE"
+	stl.TextScaled = true
+	stl.TextWrapped = true
+	stl.TextColor3 = Color3.fromRGB(255, 255, 255)
+	stl.Font = Enum.Font.FredokaOne
+	stl.Parent = sg
 	print("🗺️ buildMapDressing: paths, pads, signs and labels built")
 end
 
