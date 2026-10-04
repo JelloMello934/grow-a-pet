@@ -280,6 +280,8 @@ announceTitle.TextXAlignment = Enum.TextXAlignment.Center
 local announceBody = label(announceFrame, "", UDim2.new(1, -20, 0, 36), UDim2.new(0, 10, 0, 46), 16)
 announceBody.TextXAlignment = Enum.TextXAlignment.Center
 announceBody.TextWrapped = true
+announceTitle.ZIndex = 71 -- v47.9: labels must render ABOVE the opaque announceFrame (ZIndex 70), or announcements show as an empty black bar
+announceBody.ZIndex = 71
 
 local function announce(title: string, body: string)
 	announceTitle.Text = title
