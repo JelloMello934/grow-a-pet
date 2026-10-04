@@ -281,6 +281,94 @@ local function buildSpawnArea()
 	print("🏪 buildSpawnArea: shops built!")
 end
 
+-- ---- fishing docks + ocean safety (v47.9) ------------------------------------
+-- The v46 minimal map has no lakes/docks and its Ocean part is non-collidable,
+-- so fishing could never start and stepping off the island fell into the void.
+-- MainServer builds the three Config lakes/docks at startup (idempotent) so
+-- JarvisSync alone fixes it — no command-bar rebuild needed.
+local function buildFishingDocks()
+	if workspace:FindFirstChild("FishingDocks") then return end
+	local folder = Instance.new("Folder")
+	folder.Name = "FishingDocks"
+	folder.Parent = workspace
+	local function mk(name: string, size: Vector3, pos: Vector3, color: Color3, mat: Enum.Material?, collide: boolean?): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.Position = pos
+		p.Color = color
+		p.Material = mat or Enum.Material.SmoothPlastic
+		p.Anchored = true
+		p.CanCollide = collide ~= false
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = folder
+		return p
+	end
+	-- MUST match Config.Docks / Config.Lakes (FishingSystem validates by EndPos)
+	local dockDefs = {
+		{ EndPos = Vector3.new(45, 0, -250), Lake = Vector3.new(0, 0, -250) },
+		{ EndPos = Vector3.new(-171, 0, 125), Lake = Vector3.new(-217, 0, 125) },
+		{ EndPos = Vector3.new(171, 0, 125), Lake = Vector3.new(217, 0, 125) },
+	}
+	for i, d in dockDefs do
+		local ep = d.EndPos
+		local lake = d.Lake
+		local rim = mk("LakeSand" .. i, Vector3.new(0.5, 176, 176), Vector3.new(lake.X, -0.05, lake.Z), Color3.fromRGB(235, 215, 160), Enum.Material.Sand, false)
+		rim.Shape = Enum.PartType.Cylinder
+		rim.Orientation = Vector3.new(0, 0, 90)
+		local water = mk("LakeWater" .. i, Vector3.new(0.7, 164, 164), Vector3.new(lake.X, 0.05, lake.Z), Color3.fromRGB(45, 140, 220), Enum.Material.Water, false)
+		water.Shape = Enum.PartType.Cylinder
+		water.Orientation = Vector3.new(0, 0, 90)
+		local side = if ep.X >= lake.X then 1 else -1
+		local shoreX = lake.X + side * 88
+		local length = math.max(10, math.abs(shoreX - ep.X))
+		local wood = Color3.fromRGB(139, 99, 65)
+		mk("Dock" .. i, Vector3.new(length, 1, 7), Vector3.new((shoreX + ep.X) / 2, 1, ep.Z), wood, Enum.Material.Wood, true)
+		mk("DockEnd" .. i, Vector3.new(10, 1, 10), Vector3.new(ep.X, 1, ep.Z), wood, Enum.Material.Wood, true)
+		for _, px in { shoreX, ep.X } do
+			for _, pz in { ep.Z - 3, ep.Z + 3 } do
+				mk("DockPost" .. i, Vector3.new(0.8, 3, 0.8), Vector3.new(px, -0.5, pz), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, false)
+			end
+		end
+		local anchor = mk("DockPrompt" .. i, Vector3.new(2, 2, 2), Vector3.new(ep.X, 2.4, ep.Z), wood, Enum.Material.Wood, false)
+		anchor.Transparency = 1
+		local pr = Instance.new("ProximityPrompt")
+		pr.Name = "FishPrompt"
+		pr.ActionText = "🎣 Fish"
+		pr.ObjectText = "Fishing Dock"
+		pr.HoldDuration = 0
+		pr.MaxActivationDistance = 12
+		pr.RequiresLineOfSight = false
+		pr.Parent = anchor
+	end
+	print("🎣 buildFishingDocks: built " .. #dockDefs .. " fishing docks")
+end
+
+local oceanSafetyStarted = false
+local function startOceanSafety()
+	if oceanSafetyStarted then return end
+	oceanSafetyStarted = true
+	task.spawn(function()
+		while true do
+			for _, player in Players:GetPlayers() do
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if hrp and (hrp :: BasePart).Position.Y < -8 then
+					local part = hrp :: BasePart
+					part.CFrame = CFrame.new(0, 3, 0)
+					pcall(function()
+						part.AssemblyLinearVelocity = Vector3.zero
+						part.AssemblyAngularVelocity = Vector3.zero
+					end)
+					R("Notify"):FireClient(player, "🌊 Too deep to swim! Fish from a wooden dock 🎣", "warn")
+				end
+			end
+			task.wait(0.25)
+		end
+	end)
+end
+
 -- ---- player lifecycle ---------------------------------------------------------------
 local function broadcastVisitList()
 	local list = VisitSystem.GetVisitList(nil)
@@ -707,7 +795,9 @@ if EventSystem then EventSystem.Start() end
 if ShopSystem then ShopSystem.Start() end
 if LeaderboardSystem then LeaderboardSystem.Start() end
 WildSystem.Start()
+buildFishingDocks() -- v47.9: prompts must exist before FishingSystem.Start wires them
 FishingSystem.Start()
+startOceanSafety() -- v47.9: rescue anyone who falls through the non-collidable ocean
 DigSystem.Start() -- v14: digging + fossils
 SprinklerSystem.Start()
 BossSystem.Start() -- v16: boss events
