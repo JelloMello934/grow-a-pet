@@ -2505,6 +2505,15 @@ openDaycare = function()
 end
 R("DaycareOpen").OnClientEvent:Connect(function() openDaycare() end)
 
+-- v48: map pads (Battle/Trade) ask us to open a panel — the Players panel is
+-- where the per-player Battle / Trade buttons live.
+R("OpenPanel").OnClientEvent:Connect(function(panelName: string)
+	if panelName == "Visit" then
+		refreshVisit()
+		if openPanel ~= "Visit" then togglePanel("Visit") end
+	end
+end)
+
 -- 📡 Shiny Radar: one-time gadget (25,000c). Tap to scan; on success the
 -- server fires RadarPing and the radar is consumed (it shatters).
 radarBtn= nil
