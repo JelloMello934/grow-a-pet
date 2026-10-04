@@ -8,6 +8,14 @@ pcall(function()
 	require(game:GetService("ReplicatedStorage"):WaitForChild("JarvisReporter", 10)).start("server")
 end)
 
+-- v48: duplicate-boot guard — a second MainServer copy in the place would
+-- boot every system twice (double handlers, double spawns). Refuse politely.
+if _G.__GrowAPetBooted then
+	warn("⚠️ MainServer: duplicate copy detected — refusing to boot twice.")
+	return
+end
+_G.__GrowAPetBooted = true
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -40,20 +48,20 @@ local EvolutionSystem = safeRequire("EvolutionSystem")
 local FollowerSystem = safeRequire("FollowerSystem")
 local BattleSystem = safeRequire("BattleSystem")
 local TradeSystem = safeRequire("TradeSystem")
-local WildSystem = require(script.Parent:WaitForChild("WildSystem"))
-local FishingSystem = require(script.Parent:WaitForChild("FishingSystem"))
-local DigSystem = require(script.Parent:WaitForChild("DigSystem")) -- v14: digging + fossils
-local QuestSystem = require(script.Parent:WaitForChild("QuestSystem"))
-local SprinklerSystem = require(script.Parent:WaitForChild("SprinklerSystem"))
-local BossSystem = require(script.Parent:WaitForChild("BossSystem")) -- v16: boss events
-local SkySystem = require(script.Parent:WaitForChild("SkySystem")) -- v16: sky portal pads
-local AuctionSystem = require(script.Parent:WaitForChild("AuctionSystem")) -- v20: night auction
-local FountainSystem = require(script.Parent:WaitForChild("FountainSystem")) -- v22: lucky fountain
-local TwilightSystem = require(script.Parent:WaitForChild("TwilightSystem")) -- v23: twilight dimension
-local RideSystem = require(script.Parent:WaitForChild("RideSystem")) -- v25: pet riding
-local DaycareSystem = require(script.Parent:WaitForChild("DaycareSystem")) -- v26: pet daycare
-local RadarSystem = require(script.Parent:WaitForChild("RadarSystem")) -- v26: shiny radar
-local SpinSystem = require(script.Parent:WaitForChild("SpinSystem")) -- v16: daily spin wheel
+local WildSystem = safeRequire("WildSystem")
+local FishingSystem = safeRequire("FishingSystem")
+local DigSystem = safeRequire("DigSystem") -- v14: digging + fossils
+local QuestSystem = safeRequire("QuestSystem")
+local SprinklerSystem = safeRequire("SprinklerSystem")
+local BossSystem = safeRequire("BossSystem") -- v16: boss events
+local SkySystem = safeRequire("SkySystem") -- v16: sky portal pads
+local AuctionSystem = safeRequire("AuctionSystem") -- v20: night auction
+local FountainSystem = safeRequire("FountainSystem") -- v22: lucky fountain
+local TwilightSystem = safeRequire("TwilightSystem") -- v23: twilight dimension
+local RideSystem = safeRequire("RideSystem") -- v25: pet riding
+local DaycareSystem = safeRequire("DaycareSystem") -- v26: pet daycare
+local RadarSystem = safeRequire("RadarSystem") -- v26: shiny radar
+local SpinSystem = safeRequire("SpinSystem") -- v16: daily spin wheel
 
 -- ---- remotes -------------------------------------------------------------------
 local REMOTE_NAMES = {
@@ -701,12 +709,23 @@ R("UsePotion").OnServerEvent:Connect(function(player: Player, potionId: string, 
 	if not ok then R("Notify"):FireClient(player, msg, "warn") end
 end)
 
+-- v48: SellSystem adds to Stats.Earned but profiles store TotalEarned; seed
+-- the alias so selling never crashes (SellSystem is not JarvisSync-managed).
+local function ensureSellStats(player: Player)
+	local prof = PlayerData and PlayerData.Get(player)
+	if prof and prof.Stats and prof.Stats.Earned == nil then
+		prof.Stats.Earned = prof.Stats.TotalEarned or 0
+	end
+end
+
 R("SellAll").OnServerEvent:Connect(function(player: Player)
+	ensureSellStats(player)
 	local ok, msg = SellSystem.SellAll(player)
 	if not ok then R("Notify"):FireClient(player, msg, "warn") end
 end)
 
 R("SellOne").OnServerEvent:Connect(function(player: Player, uid: string)
+	ensureSellStats(player)
 	local ok, msg = SellSystem.SellOne(player, tostring(uid))
 	if not ok then R("Notify"):FireClient(player, msg, "warn") end
 end)
@@ -949,30 +968,36 @@ R("BoothAccept").OnServerEvent:Connect(function(player: Player, idx: number, off
 end)
 
 -- ---- start everything -------------------------------------------------------------------
+-- v48: every system starts behind its own pcall — one broken system warns
+-- and the rest of the game still boots (no more dead-server-from-one-error).
+local function startSystem(name: string, mod: any)
+	if not mod or not (mod :: any).Start then return end
+	local ok, err = pcall((mod :: any).Start)
+	if not ok then warn("⚠️ MainServer: " .. name .. ".Start failed: " .. tostring(err)) end
+end
+
 buildSpawnArea()
--- v47: guard the soft-required systems — a missing module warns via
--- safeRequire but must not kill the rest of startup (titan loop, autosave)
-if GrowthSystem then GrowthSystem.Start() end
-if EventSystem then EventSystem.Start() end
-if ShopSystem then ShopSystem.Start() end
-if LeaderboardSystem then LeaderboardSystem.Start() end
-WildSystem.Start()
+startSystem("GrowthSystem", GrowthSystem)
+startSystem("EventSystem", EventSystem)
+startSystem("ShopSystem", ShopSystem)
+startSystem("LeaderboardSystem", LeaderboardSystem)
+startSystem("WildSystem", WildSystem)
 buildFishingDocks() -- v47.9: prompts must exist before FishingSystem.Start wires them
-FishingSystem.Start()
+startSystem("FishingSystem", FishingSystem)
 startOceanSafety() -- v47.9: rescue anyone who falls through the non-collidable ocean
 buildMapDressing() -- v48: sand paths, battle/trade pads, spawn signpost, zone labels
-DigSystem.Start() -- v14: digging + fossils
-SprinklerSystem.Start()
-BossSystem.Start() -- v16: boss events
-SkySystem.Start() -- v16: sky portal pads
-SpinSystem.Start() -- v16: daily spin wheel
-if TradeSystem then TradeSystem.Start() end -- v18: trading booth prompts
-FountainSystem.Start() -- v22: lucky fountain prompt
-AuctionSystem.Start() -- v20: night auction scheduler
-TwilightSystem.Start() -- v23: twilight dimension portal pads
-RideSystem.Start() -- v25: pet riding sanity loop
-DaycareSystem.Start() -- v26: daycare prompt
-RadarSystem.Start() -- v26: shiny radar
+startSystem("DigSystem", DigSystem) -- v14: digging + fossils
+startSystem("SprinklerSystem", SprinklerSystem)
+startSystem("BossSystem", BossSystem) -- v16: boss events
+startSystem("SkySystem", SkySystem) -- v16: sky portal pads
+startSystem("SpinSystem", SpinSystem) -- v16: daily spin wheel
+startSystem("TradeSystem", TradeSystem) -- v18: trading booth prompts
+startSystem("FountainSystem", FountainSystem) -- v22: lucky fountain prompt
+startSystem("AuctionSystem", AuctionSystem) -- v20: night auction scheduler
+startSystem("TwilightSystem", TwilightSystem) -- v23: twilight dimension portal pads
+startSystem("RideSystem", RideSystem) -- v25: pet riding sanity loop
+startSystem("DaycareSystem", DaycareSystem) -- v26: daycare prompt
+startSystem("RadarSystem", RadarSystem) -- v26: shiny radar
 if GardenManager and GardenManager.WireClaimPrompts then
 	GardenManager.WireClaimPrompts() -- v46: hold-E claim prompts at each garden gate
 end
