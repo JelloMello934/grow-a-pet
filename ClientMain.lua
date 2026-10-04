@@ -1608,6 +1608,12 @@ do
 		local card = Instance.new("Frame")
 		card.Size = UDim2.new(0, 220, 0, 330)
 		card.BackgroundColor3 = Color3.fromRGB(42, 36, 66)
+		-- v47.7: hard floor on card size — a bad first-frame viewport read
+		-- used to collapse the starter cards into a thin vertical strip.
+		local cardCap = Instance.new("UISizeConstraint")
+		cardCap.MinSize = Vector2.new(190, 330)
+		cardCap.MaxSize = Vector2.new(340, 330)
+		cardCap.Parent = card
 		corner(card, 12)
 		-- v36: vivid type-colored glow around each starter card
 		local cglow = Instance.new("UIStroke")
@@ -1652,9 +1658,15 @@ do
 	-- cards; wider screens keep the original horizontal trio
 	relayoutStarters = function()
 		for _, c in holder:GetChildren() do c:Destroy() end
-		local vw = 1024
-		local cam = workspace.CurrentCamera
-		if cam then vw = cam.ViewportSize.X end
+		-- v47.7: use the real GUI size first. CurrentCamera.ViewportSize can
+		-- be 0/tiny on the exact frame StarterPrompt arrives in Studio, which
+		-- made the phone branch build near-zero-width cards.
+		local vw = gui.AbsoluteSize.X
+		if vw < 200 then
+			local cam = workspace.CurrentCamera
+			if cam then vw = cam.ViewportSize.X end
+		end
+		if vw < 200 then vw = 1024 end
 		if vw < 720 then
 			local scroll = Instance.new("ScrollingFrame")
 			scroll.Size = UDim2.new(1, 0, 1, 0)
@@ -1667,9 +1679,10 @@ do
 			lay.Padding = UDim.new(0, 12)
 			lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			lay.Parent = scroll
-			for _, pid in STARTER_IDS do
+			for i, pid in STARTER_IDS do
 				local card = buildStarterCard(pid)
-				card.Size = UDim2.new(0, math.min(320, math.floor(vw * 0.9)), 0, 330)
+				card.LayoutOrder = i
+				card.Size = UDim2.new(0, math.clamp(math.floor(vw * 0.9), 230, 320), 0, 330)
 				card.Parent = scroll
 			end
 		else
@@ -1679,8 +1692,12 @@ do
 			lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			lay.VerticalAlignment = Enum.VerticalAlignment.Center
 			lay.Parent = holder
-			for _, pid in STARTER_IDS do
-				buildStarterCard(pid).Parent = holder
+			local cardW = math.clamp(math.floor((vw - 36) / 3), 190, 220)
+			for i, pid in STARTER_IDS do
+				local card = buildStarterCard(pid)
+				card.LayoutOrder = i
+				card.Size = UDim2.new(0, cardW, 0, 330)
+				card.Parent = holder
 			end
 		end
 	end
