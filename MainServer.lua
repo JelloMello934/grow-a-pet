@@ -423,11 +423,11 @@ local function buildMapDressing()
 		p.Orientation = Vector3.new(0, 0, 90)
 		return p
 	end
-	local function makeLabel(name: string, pos: Vector3, text: string, color: Color3)
+	local function makeLabel(name: string, pos: Vector3, text: string, color: Color3, width: number?)
 		local anchor = mk(name, Vector3.new(1, 1, 1), pos, color, nil, false)
 		anchor.Transparency = 1
 		local bb = Instance.new("BillboardGui")
-		bb.Size = UDim2.new(0, 200, 0, 46)
+		bb.Size = UDim2.new(0, width or 200, 0, 46)
 		bb.AlwaysOnTop = false
 		bb.Adornee = anchor
 		bb.Parent = anchor
@@ -447,31 +447,27 @@ local function buildMapDressing()
 		local p = mk(name, Vector3.new(width, 0.12, len), Vector3.new(mid.X, 0.08, mid.Z), Color3.fromRGB(232, 214, 160), Enum.Material.Sand, false)
 		p.CFrame = CFrame.lookAt(Vector3.new(mid.X, 0.08, mid.Z), Vector3.new(toPos.X, 0.08, toPos.Z))
 	end
-	-- sand paths: plaza -> each garden GATE (same dominant-axis gate math as
-	-- GardenManager.EnsureClaimPrompt) and plaza -> each dock shore, so the
-	-- paths actually line up with where players walk and claim.
+	-- sand paths: garden paths run radially from the plaza and STOP at the
+	-- garden fence edge (never through the plots); lake paths run to the
+	-- shore point facing the plaza, which routes them BETWEEN gardens.
 	local gardens = {
 		Vector3.new(140, 0, 0), Vector3.new(70, 0, -121), Vector3.new(-70, 0, -121),
 		Vector3.new(-140, 0, 0), Vector3.new(-70, 0, 121), Vector3.new(70, 0, 121),
 	}
 	for i, g in gardens do
-		local gdx, gdz = -g.X, -g.Z
-		local gate: Vector3
-		if math.abs(gdx) > math.abs(gdz) then
-			gate = g + Vector3.new(if gdx > 0 then 41 else -41, 0, 0)
-		else
-			gate = g + Vector3.new(0, 0, if gdz > 0 then 31 else -31)
-		end
-		local gdir = Vector3.new(gate.X, 0, gate.Z).Unit
-		makePath("GardenPath" .. i, gdir * 26, gate - gdir * 4, 8)
+		local u = Vector3.new(g.X, 0, g.Z).Unit
+		local ex = if math.abs(u.X) > 0.001 then 38 / math.abs(u.X) else math.huge
+		local ez = if math.abs(u.Z) > 0.001 then 28 / math.abs(u.Z) else math.huge
+		local edge = math.min(ex, ez)
+		makePath("GardenPath" .. i, u * 26, g - u * (edge + 4), 8)
 		makeLabel("GardenLabel" .. i, g + Vector3.new(0, 13, 0), "🌱 Garden " .. i, Color3.fromRGB(190, 255, 190))
 	end
 	local lakeCenters = { Vector3.new(0, 0, -250), Vector3.new(-217, 0, 125), Vector3.new(217, 0, 125) }
 	local dockEnds = { Vector3.new(45, 0, -250), Vector3.new(-171, 0, 125), Vector3.new(171, 0, 125) }
 	for i, ep in dockEnds do
 		local lake = lakeCenters[i]
-		local side = if ep.X >= lake.X then 1 else -1
-		local shore = Vector3.new(lake.X + side * 88, 0, lake.Z)
+		local toPlaza = Vector3.new(-lake.X, 0, -lake.Z).Unit
+		local shore = lake + toPlaza * 88
 		local sdir = Vector3.new(shore.X, 0, shore.Z).Unit
 		makePath("LakePath" .. i, sdir * 26, shore - sdir * 6, 6)
 		makeLabel("DockLabel" .. i, ep + Vector3.new(0, 8, 0), "🎣 Fishing", Color3.fromRGB(170, 220, 255))
@@ -479,8 +475,8 @@ local function buildMapDressing()
 	-- battle / trade pads just south of spawn (core-loop social spots)
 	disc("BattlePad", 10, 0.5, Vector3.new(16, 0.25, 34), Color3.fromRGB(170, 90, 220))
 	disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
-	makeLabel("BattleLabel", Vector3.new(16, 7, 34), "⚔️ Battle", Color3.fromRGB(255, 200, 255))
-	makeLabel("TradeLabel", Vector3.new(-16, 7, 34), "🤝 Trade", Color3.fromRGB(190, 255, 255))
+	makeLabel("BattleLabel", Vector3.new(27, 7, 36), "⚔️ Battle", Color3.fromRGB(255, 200, 255), 120)
+	makeLabel("TradeLabel", Vector3.new(-27, 7, 36), "🤝 Trade", Color3.fromRGB(190, 255, 255), 120)
 	-- spawn signpost: the whole loop written ON the board (SurfaceGui, not a
 	-- floating billboard), turned to face the spawn point.
 	mk("SignPost", Vector3.new(0.6, 5, 0.6), Vector3.new(10, 2.5, -14), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, true)
