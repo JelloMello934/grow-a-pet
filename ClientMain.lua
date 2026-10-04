@@ -333,6 +333,7 @@ for _, l in { coinsLabel, eggLabel, buffLabel, eventLabel, phaseLabel } do
 	(l :: TextLabel).TextXAlignment = Enum.TextXAlignment.Center
 	;(l :: TextLabel).BackgroundTransparency = 1
 end
+local shopBalance: any -- v47.8: Shop header balance readout (filled in below)
 
 local bottomBar = Instance.new("Frame")
 bottomBar.Size = UDim2.new(1, 0, 0, 64)
@@ -496,6 +497,7 @@ end
 local function refreshTop()
 	coinsLabel.Text = "💰 " .. coins
 	eggLabel.Text = "🥚 " .. eggCount
+	if shopBalance then (shopBalance :: TextLabel).Text = "💰 " .. coins .. "    🥚 " .. eggCount end
 	local bits = {}
 	if (buffs.TonicLeft or 0) > 0 then table.insert(bits, "🌱+" .. math.floor(buffs.TonicLeft / 60) .. "m") end
 	if buffs.EvoBoost then table.insert(bits, "⚡Evo") end
@@ -526,6 +528,11 @@ local canEvolveClient: any, refreshShop: any -- §escapes: SHOP PANEL
 do
 -- ============================================================================
 local shopPanel, shopList = makePanel("Shop", "🥚 Pet Shop 🧪", true)
+-- v47.8: the wide shop panel covers the right-side money HUD, so mirror the
+-- live coin/egg balance in the shop header (left of the X, updates on buy).
+shopBalance = label(shopPanel, "💰 0    🥚 0", UDim2.new(0, 230, 0, 30), UDim2.new(1, -302, 0, 7), 16, Color3.fromRGB(255, 255, 255))
+;(shopBalance :: TextLabel).TextXAlignment = Enum.TextXAlignment.Right
+;(shopBalance :: TextLabel).ZIndex = 6
 
 canEvolveClient = function(petId: string): boolean
 	-- v14 fix: evolutions live in PetData.EVOLUTIONS, not on the species def
