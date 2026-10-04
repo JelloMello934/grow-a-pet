@@ -3,7 +3,7 @@
 -- Owns every garden: plot data, planting eggs AND pets, watering, buying plots.
 -- Growing a pet is SAFE: the pet record lives on the plot while growing and is
 -- always returned on harvest (evolved or unchanged). Builds garden visuals in
--- code so Deacon only places a baseplate + spawn.
+-- code so only a baseplate + spawn needs placing.
 
 local GardenManager = {}
 
