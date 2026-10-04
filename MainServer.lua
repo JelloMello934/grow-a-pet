@@ -369,6 +369,87 @@ local function startOceanSafety()
 	end)
 end
 
+-- ---- map dressing (v48, from MAP_DESIGN_V48) ---------------------------------
+-- Runtime-built so JarvisSync delivers it: sand paths, battle/trade pads,
+-- spawn signpost and floating zone labels. Geometry matches GardenManager's
+-- garden ring (r=140) and Config lakes/docks, so nothing needs a rebuild.
+local function buildMapDressing()
+	if workspace:FindFirstChild("MapDressing") then return end
+	local folder = Instance.new("Folder")
+	folder.Name = "MapDressing"
+	folder.Parent = workspace
+	local function mk(name: string, size: Vector3, pos: Vector3, color: Color3, mat: Enum.Material?, collide: boolean?): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.Position = pos
+		p.Color = color
+		p.Material = mat or Enum.Material.SmoothPlastic
+		p.Anchored = true
+		p.CanCollide = collide ~= false
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = folder
+		return p
+	end
+	local function disc(name: string, radius: number, height: number, pos: Vector3, color: Color3): Part
+		local p = mk(name, Vector3.new(height, radius * 2, radius * 2), pos, color, Enum.Material.SmoothPlastic, true)
+		p.Shape = Enum.PartType.Cylinder
+		p.Orientation = Vector3.new(0, 0, 90)
+		return p
+	end
+	local function makeLabel(name: string, pos: Vector3, text: string, color: Color3)
+		local anchor = mk(name, Vector3.new(1, 1, 1), pos, color, nil, false)
+		anchor.Transparency = 1
+		local bb = Instance.new("BillboardGui")
+		bb.Size = UDim2.new(0, 200, 0, 46)
+		bb.AlwaysOnTop = false
+		bb.Adornee = anchor
+		bb.Parent = anchor
+		local tl = Instance.new("TextLabel")
+		tl.Size = UDim2.new(1, 0, 1, 0)
+		tl.BackgroundTransparency = 0.35
+		tl.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
+		tl.Text = text
+		tl.TextScaled = true
+		tl.TextColor3 = color
+		tl.Font = Enum.Font.FredokaOne
+		tl.Parent = bb
+	end
+	local function makePath(name: string, fromPos: Vector3, toPos: Vector3, width: number)
+		local mid = (fromPos + toPos) / 2
+		local len = (toPos - fromPos).Magnitude
+		local p = mk(name, Vector3.new(width, 0.12, len), Vector3.new(mid.X, 0.08, mid.Z), Color3.fromRGB(232, 214, 160), Enum.Material.Sand, false)
+		p.CFrame = CFrame.lookAt(Vector3.new(mid.X, 0.08, mid.Z), Vector3.new(toPos.X, 0.08, toPos.Z))
+	end
+	-- sand paths: plaza edge -> each garden, plaza -> each dock end
+	local gardens = {
+		Vector3.new(140, 0, 0), Vector3.new(70, 0, -121), Vector3.new(-70, 0, -121),
+		Vector3.new(-140, 0, 0), Vector3.new(-70, 0, 121), Vector3.new(70, 0, 121),
+	}
+	for i, g in gardens do
+		local dir = Vector3.new(g.X, 0, g.Z).Unit
+		makePath("GardenPath" .. i, dir * 30, dir * 104, 8)
+		makeLabel("GardenLabel" .. i, g + Vector3.new(0, 13, 0), "🌱 Garden " .. i, Color3.fromRGB(190, 255, 190))
+	end
+	local dockEnds = { Vector3.new(45, 0, -250), Vector3.new(-171, 0, 125), Vector3.new(171, 0, 125) }
+	for i, ep in dockEnds do
+		local dir = Vector3.new(ep.X, 0, ep.Z).Unit
+		makePath("LakePath" .. i, dir * 30, ep - dir * 14, 6)
+		makeLabel("DockLabel" .. i, ep + Vector3.new(0, 8, 0), "🎣 Fishing", Color3.fromRGB(170, 220, 255))
+	end
+	-- battle / trade pads just south of spawn (core-loop social spots)
+	disc("BattlePad", 10, 0.5, Vector3.new(16, 0.25, 34), Color3.fromRGB(170, 90, 220))
+	disc("TradePad", 10, 0.5, Vector3.new(-16, 0.25, 34), Color3.fromRGB(60, 190, 200))
+	makeLabel("BattleLabel", Vector3.new(16, 7, 34), "⚔️ Battle", Color3.fromRGB(255, 200, 255))
+	makeLabel("TradeLabel", Vector3.new(-16, 7, 34), "🤝 Trade", Color3.fromRGB(190, 255, 255))
+	-- spawn signpost: the whole loop on one board
+	mk("SignPost", Vector3.new(0.6, 5, 0.6), Vector3.new(10, 2.5, -14), Color3.fromRGB(110, 75, 45), Enum.Material.Wood, true)
+	mk("SignBoard", Vector3.new(12, 3, 0.4), Vector3.new(10, 5.6, -14), Color3.fromRGB(90, 68, 44), Enum.Material.Wood, false)
+	makeLabel("SignText", Vector3.new(10, 8.2, -14), "🌱 CLAIM → GROW → EVOLVE → ⚔️ BATTLE → 🤝 TRADE", Color3.fromRGB(255, 255, 255))
+	print("🗺️ buildMapDressing: paths, pads, signs and labels built")
+end
+
 -- ---- player lifecycle ---------------------------------------------------------------
 local function broadcastVisitList()
 	local list = VisitSystem.GetVisitList(nil)
@@ -798,6 +879,7 @@ WildSystem.Start()
 buildFishingDocks() -- v47.9: prompts must exist before FishingSystem.Start wires them
 FishingSystem.Start()
 startOceanSafety() -- v47.9: rescue anyone who falls through the non-collidable ocean
+buildMapDressing() -- v48: sand paths, battle/trade pads, spawn signpost, zone labels
 DigSystem.Start() -- v14: digging + fossils
 SprinklerSystem.Start()
 BossSystem.Start() -- v16: boss events
