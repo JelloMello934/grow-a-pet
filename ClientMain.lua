@@ -585,6 +585,7 @@ refreshShop = function()
 		b.TextSize = 14
 		b.MouseButton1Click:Connect(function()
 			if e.Kind == "Egg" then R("BuyEgg"):FireServer()
+			elseif e.Kind == "Pet" then R("BuyPet"):FireServer(e.Id)
 			elseif e.Kind == "Treat" then R("BuyBait"):FireServer(e.Id)
 			elseif e.Kind == "Sprinkler" then
 				if not ownedSprinkler then R("BuySprinkler"):FireServer() end
