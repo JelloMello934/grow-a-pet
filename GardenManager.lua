@@ -806,7 +806,12 @@ function GardenManager.WaterPlot(player: Player, plotKey: string): (boolean, str
 	local helperNote = ""
 	if isOwner then
 		plot.WaterUntil = now + Config.WaterSelfCooldown
-		plot.Progress = math.min(0.999, plot.Progress + Config.WaterSelfBoost)
+		local boost = (Config.WaterSelfBoost :: number)
+		if plot.PetId then -- v48: Dew Touch trait: watering its plot gives +25% progress
+			local petDef = (PetData.PETS :: { [string]: any })[plot.PetId]
+			if petDef and (petDef.Trait :: string?) == "DewTouch" then boost *= 1.25 end
+		end
+		plot.Progress = math.min(0.999, plot.Progress + boost)
 	else
 		-- v20 co-op watering: one help per growth stage per helper (anti-farm),
 		-- helper coin rewards capped daily, +1 follower bond per help (capped).
@@ -992,6 +997,13 @@ function GardenManager.GrowthRate(garden: Garden, plot: Plot?): number
 	if ES().IsNight() and plot and plot.PetId then -- 🌙 night phase: nocturnal pets grow 2x
 		local def = (PetData.PETS :: { [string]: any })[plot.PetId]
 		if def and (def.Nocturnal :: boolean) then rate *= 2 end
+	end
+	if plot and plot.PetId then -- v48: Claude batch garden traits
+		local def = (PetData.PETS :: { [string]: any })[plot.PetId]
+		local trait = def and (def.Trait :: string?)
+		if trait == "QuickSprout" then rate *= 1.10 end -- +10% grow speed on plot
+		if trait == "RainLover" and ev == "Rain" then rate *= 1.25 end -- +25% during Rain
+		if trait == "SunChaser" and ev == "Sunny" then rate *= 1.25 end -- +25% during Sunny
 	end
 	return rate
 end
