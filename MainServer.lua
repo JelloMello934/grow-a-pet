@@ -34,6 +34,7 @@ local function safeRequire(name: string)
 	return result
 end
 local PlayerData = safeRequire("PlayerData")
+local PetData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PetData"))
 local GardenManager = safeRequire("GardenManager")
 local GrowthSystem = safeRequire("GrowthSystem")
 local ShopSystem = safeRequire("ShopSystem")
@@ -86,7 +87,7 @@ local REMOTE_NAMES = {
 	"StoneDone", -- v24: server tells the client the armed stone was consumed
 	-- client -> server
 	"ChooseStarter", "RequestStarter", "RequestShopStock", "RequestEvent", "RequestPhase",
-	"BuyEgg", "BuyPotion", "BuyPlot", "BuyBait", "BuySprinkler", "RenamePet",
+	"BuyEgg", "BuyPet", "BuyPotion", "BuyPlot", "BuyBait", "BuySprinkler", "RenamePet",
 	"BuySkin", "SetSkin", "BuyRepellent", "ArmRepellent", -- v21: pest repellent
 	"BuyEvoStone", "ArmEvoStone", -- v24: evolution stones (client -> server)
 	"RequestQuests", "ClaimQuest",
@@ -540,6 +541,25 @@ local function buildMapDressing()
 end
 
 -- ---- player lifecycle ---------------------------------------------------------------
+-- Claude batch preview pets (2026-10-04): sold directly for 50c so they can be viewed in game
+local PREVIEW_PETS: { string } = { "Mossbun", "Clovelop", "Meadowhare", "Leafling", "Budwing", "Blossomwing",
+	"Cinderkit", "Flarefox", "Solarfox", "Emberchick", "Blazewing", "Sunphoenix",
+	"Ripplet", "Brookotter", "Tidalotter", "Foamclaw", "Pearlclaw", "Reefking" }
+local PREVIEW_SET: { [string]: boolean } = {}
+for _, id in PREVIEW_PETS do PREVIEW_SET[id] = true end
+local function stockWithPreview(): { { [string]: any } }
+	local stock = ShopSystem.GetStock()
+	for _, id in PREVIEW_PETS do
+		local def = (PetData.PETS :: { [string]: any })[id]
+		if def then
+			table.insert(stock, { Kind = "Pet", Id = id, Price = 50,
+				Name = "✨ " .. tostring(def.Name) .. " (NEW)",
+				Desc = tostring(def.Type) .. " • Stage " .. tostring(def.Stage) .. " • NEW pet preview" })
+		end
+	end
+	return stock
+end
+
 local function broadcastVisitList()
 	local list = VisitSystem.GetVisitList(nil)
 	for _, p in Players:GetPlayers() do
@@ -567,7 +587,7 @@ local function onJoin(player: Player)
 	-- v46: no auto-assign — the player claims a garden by holding E at its front gate
 	R("Notify"):FireClient(player, "🌱 Walk up to any garden and hold E to claim it!", "ok")
 	FollowerSystem.OnJoin(player)
-	R("ShopStock"):FireClient(player, ShopSystem.GetStock())
+	R("ShopStock"):FireClient(player, stockWithPreview())
 	R("EventChanged"):FireClient(player, EventSystem.CurrentEvent(), os.time() + EventSystem.TimeLeft())
 	R("PhaseChanged"):FireClient(player, EventSystem.Phase(), os.time() + EventSystem.PhaseTimeLeft())
 	DailyRewards.PushStatus(player)
@@ -633,7 +653,26 @@ end)
 -- time the shop is opened (the onJoin fire can arrive before the client
 -- connects its handler, which left the shop showing only the plot row)
 R("RequestShopStock").OnServerEvent:Connect(function(player: Player)
-	R("ShopStock"):FireClient(player, ShopSystem.GetStock())
+	R("ShopStock"):FireClient(player, stockWithPreview())
+end)
+
+R("BuyPet").OnServerEvent:Connect(function(player: Player, petId: string)
+	petId = tostring(petId)
+	if not PREVIEW_SET[petId] then
+		R("Notify"):FireClient(player, "Unknown pet!", "warn")
+		return
+	end
+	if not PlayerData.SpendCoins(player, 50) then
+		R("Notify"):FireClient(player, "Need 50 coins!", "warn")
+		return
+	end
+	local uid = PlayerData.AddPet(player, petId, nil, false, false, true) -- noAutoSell: shop buys are never auto-sold
+	if uid then
+		R("Notify"):FireClient(player, "Bought " .. petId .. "! Check your bag 🎒", "ok")
+	else
+		PlayerData.AddCoins(player, 50, "BuyPetRefund")
+		R("Notify"):FireClient(player, "Could not add pet. Refunded 50c.", "warn")
+	end
 end)
 
 -- fallback: client asks for the current event once its UI is ready
