@@ -33,6 +33,7 @@ export type PetDef = {
 	Sky: boolean?, -- v16: sky-island pets (sky zones only, never wild-lowlands/egg)
 	Rot: boolean?, -- v21: rot-only pets (infestation only, never wild/egg)
 	Twilight: boolean?, -- v23: twilight-dimension exclusives (never wild-lowlands/egg)
+	Trait: string?, -- v48: Claude batch trait id (QuickSprout | RainLover | SunChaser | CinderRebirth | DewTouch | HardShell)
 	Extras: { [string]: any }?, -- signature visuals: LeafCrown | Flippers | BackSpikes
 		-- FireMane | AquaFins | Comb | CottonTail | VoltCheeks | IceShards
 		-- RockSpikes | LavaSpikes | EyeDiscs | HeadCrest | TailTip | MoonMark
@@ -93,6 +94,23 @@ pet("Tidalotter", "Tidalotter", "Rare", "Water", 3, 4000, false, C(70, 135, 200)
 pet("Foamclaw", "Foamclaw", "Common", "Water", 1, 150, false, C(63, 184, 175), "none", false, true, 0.9, nil, nil, nil, "Day")
 pet("Pearlclaw", "Pearlclaw", "Uncommon", "Water", 2, 800, false, C(70, 190, 180), "none", false, true, 1.1, nil, nil, nil, "Day")
 pet("Reefking", "Reefking", "Rare", "Water", 3, 4000, false, C(75, 195, 185), "none", false, true, 1.35, nil, nil, { RockSpikes = true }, "Day")
+
+-- v48: Claude batch traits (2026-10-04 redesigns). Garden traits hook
+-- GardenManager.GrowthRate + watering; battle traits hook BattleSystem.
+do
+	local traits: { [string]: string } = {
+		Mossbun = "QuickSprout", Clovelop = "QuickSprout", Meadowhare = "QuickSprout",
+		Leafling = "RainLover", Budwing = "RainLover", Blossomwing = "RainLover",
+		Cinderkit = "SunChaser", Flarefox = "SunChaser", Solarfox = "SunChaser",
+		Emberchick = "CinderRebirth", Blazewing = "CinderRebirth", Sunphoenix = "CinderRebirth",
+		Ripplet = "DewTouch", Brookotter = "DewTouch", Tidalotter = "DewTouch",
+		Foamclaw = "HardShell", Pearlclaw = "HardShell", Reefking = "HardShell",
+	}
+	for id, trait in traits do
+		local d = P[id]
+		if d then d.Trait = trait end
+	end
+end
 
 -- ============ WILD BASICS (stage 1, hatch from Pet Eggs) ============
 pet("Chick", "Chick", "Common", "Normal", 1, 120, false, C(255, 211, 0), "none", false, false, 0.7, nil, nil, { Comb = true }, "Day")
@@ -480,6 +498,20 @@ local STAT_BASE = {
 }
 local STAGE_MULT = { [1] = 1.0, [2] = 1.25, [3] = 1.5 }
 
+-- v48: Claude-designed per-pet battle stats for the 6 new shop lines, rescaled
+-- from Claude's placeholder numbers (which summed 66/110/170 per stage) so each
+-- stage's HP+Atk+Def total matches the rarity x stage system totals. Values are
+-- ABSOLUTE per stage (stage mult is NOT applied). Spd keeps the rarity base.
+-- Order per entry: HP, Atk, Def.
+local STAT_OVERRIDES: { [string]: { number } } = {
+	Mossbun = { 38, 22, 44 }, Clovelop = { 62, 34, 74 }, Meadowhare = { 94, 49, 115 },
+	Leafling = { 53, 19, 32 }, Budwing = { 96, 22, 52 }, Blossomwing = { 106, 58, 94 },
+	Cinderkit = { 32, 47, 25 }, Flarefox = { 49, 81, 40 }, Solarfox = { 73, 127, 58 },
+	Emberchick = { 35, 35, 34 }, Blazewing = { 56, 58, 56 }, Sunphoenix = { 82, 94, 82 },
+	Ripplet = { 48, 28, 28 }, Brookotter = { 78, 46, 46 }, Tidalotter = { 118, 70, 70 },
+	Foamclaw = { 47, 38, 19 }, Pearlclaw = { 74, 65, 31 }, Reefking = { 115, 103, 40 },
+}
+
 -- Bond (petting your follower) milestone HP multiplier. Kept tiny on purpose.
 function PetData.BondHPMult(bond: number?): number
 	local b = bond or 0
@@ -495,6 +527,7 @@ function PetData.GetBattleStats(petId: string, mutation: string?, stars: number?
 	assert(def, "Unknown pet " .. tostring(petId))
 	local base: { number } = (STAT_BASE :: { [string]: { number } })[def.Rarity] or STAT_BASE.Common
 	local sm = STAGE_MULT[def.Stage] or 1
+	local ov = STAT_OVERRIDES[petId] -- v48: rescaled per-pet stats (absolute per stage)
 	local mm = 1
 	if mutation then
 		local mdef = (Config.Mutations :: { [string]: { [string]: number } })[mutation]
@@ -503,7 +536,13 @@ function PetData.GetBattleStats(petId: string, mutation: string?, stars: number?
 	local starm = math.pow(Config.StarStatMult, stars or 0)
 	local bondm = PetData.BondHPMult(bond)
 	local function v(i: number): number
-		local x = base[i] * sm * mm * starm
+		local x: number
+		if ov and i <= 3 then
+			x = ov[i] -- override: HP/Atk/Def absolute, stage mult NOT applied
+		else
+			x = base[i] * sm
+		end
+		x *= mm * starm
 		if i == 1 then x *= bondm end -- bond boosts HP only
 		return math.floor(x)
 	end
