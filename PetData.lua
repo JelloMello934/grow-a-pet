@@ -68,6 +68,32 @@ pet("Bubblin", "Bubblin", "Rare", "Water", 1, 5000, false, C(19, 122, 241), "fin
 pet("Riptide", "Riptide", "Epic", "Water", 2, 20000, false, C(0, 101, 237), "fin", true, false, 1.1, "Ice", true, { AquaFins = true })
 pet("Abyssjaw", "Abyssjaw", "Legendary", "Water", 3, 80000, false, C(0, 89, 223), "fin", true, false, 1.3, "Ice", true, { AquaFins = true })
 
+-- ============ CLAUDE BATCH (2026-10-04): 6 new lines x 3 stages, 50c shop preview ============
+-- Grass: Mossbun bunny line
+pet("Mossbun", "Mossbun", "Common", "Grass", 1, 150, false, C(243, 235, 210), "point", true, false, 0.85, "Ground", nil, { CottonTail = true, LeafCrown = true }, "Day")
+pet("Clovelop", "Clovelop", "Uncommon", "Grass", 2, 800, false, C(240, 232, 200), "point", true, false, 1.05, "Ground", nil, { CottonTail = true, LeafCrown = true }, "Day")
+pet("Meadowhare", "Meadowhare", "Rare", "Grass", 3, 4000, false, C(238, 230, 195), "point", true, false, 1.3, "Ground", nil, { CottonTail = true, LeafCrown = true }, "Day")
+-- Grass: Leafling caterpillar -> butterfly line
+pet("Leafling", "Leafling", "Common", "Grass", 1, 150, false, C(168, 214, 90), "none", false, false, 0.8, nil, nil, { Sprout = true }, "Day")
+pet("Budwing", "Budwing", "Uncommon", "Grass", 2, 800, false, C(150, 200, 90), "none", false, false, 1.0, nil, nil, { Sprout = true }, "Day")
+pet("Blossomwing", "Blossomwing", "Rare", "Grass", 3, 4000, false, C(246, 205, 215), "wing", false, false, 1.1, "Flying", nil, { Sprout = true }, "Day")
+-- Fire: Cinderkit fox line
+pet("Cinderkit", "Cinderkit", "Common", "Fire", 1, 150, false, C(242, 118, 46), "point", true, false, 0.85, "Flying", nil, { FireMane = true }, "Day")
+pet("Flarefox", "Flarefox", "Uncommon", "Fire", 2, 800, false, C(245, 110, 40), "point", true, false, 1.05, "Flying", nil, { FireMane = true, TailTip = true }, "Day")
+pet("Solarfox", "Solarfox", "Rare", "Fire", 3, 4000, false, C(250, 120, 45), "point", true, false, 1.3, "Flying", nil, { FireMane = true, TailTip = true }, "Day")
+-- Fire: Emberchick phoenix line
+pet("Emberchick", "Emberchick", "Common", "Fire", 1, 150, false, C(232, 69, 44), "wing", true, false, 0.8, "Flying", nil, { Beak = true, HeadCrest = true }, "Day")
+pet("Blazewing", "Blazewing", "Uncommon", "Fire", 2, 800, false, C(240, 90, 40), "wing", true, false, 1.05, "Flying", nil, { Beak = true, HeadCrest = true }, "Day")
+pet("Sunphoenix", "Sunphoenix", "Rare", "Fire", 3, 4000, false, C(245, 120, 47), "wing", true, false, 1.3, "Flying", nil, { Beak = true, HeadCrest = true }, "Day")
+-- Water: Ripplet otter line
+pet("Ripplet", "Ripplet", "Common", "Water", 1, 150, false, C(91, 155, 213), "fin", true, false, 0.85, "Ice", nil, { AquaFins = true, Snout = true }, "Day")
+pet("Brookotter", "Brookotter", "Uncommon", "Water", 2, 800, false, C(80, 145, 205), "fin", true, false, 1.05, "Ice", nil, { AquaFins = true, Snout = true }, "Day")
+pet("Tidalotter", "Tidalotter", "Rare", "Water", 3, 4000, false, C(70, 135, 200), "fin", true, false, 1.2, "Ice", nil, { AquaFins = true, Snout = true, BackSpikes = true }, "Day")
+-- Water: Foamclaw crab line
+pet("Foamclaw", "Foamclaw", "Common", "Water", 1, 150, false, C(63, 184, 175), "none", false, true, 0.9, nil, nil, nil, "Day")
+pet("Pearlclaw", "Pearlclaw", "Uncommon", "Water", 2, 800, false, C(70, 190, 180), "none", false, true, 1.1, nil, nil, nil, "Day")
+pet("Reefking", "Reefking", "Rare", "Water", 3, 4000, false, C(75, 195, 185), "none", false, true, 1.35, nil, nil, { RockSpikes = true }, "Day")
+
 -- ============ WILD BASICS (stage 1, hatch from Pet Eggs) ============
 pet("Chick", "Chick", "Common", "Normal", 1, 120, false, C(255, 211, 0), "none", false, false, 0.7, nil, nil, { Comb = true }, "Day")
 pet("Bunny", "Bunny", "Common", "Normal", 1, 120, false, C(246, 246, 246), "flop", true, false, 0.9, nil, nil, { CottonTail = true }, "Night")
@@ -294,6 +320,19 @@ PetData.EVOLUTIONS = {
 	Glimmerolt = { { To = "Aurorion", Weight = 100 } },
 	Duskit = { { To = "Shadetail", Weight = 100 } },
 	Shadetail = { { To = "Eclipsire", Weight = 100 } },
+	-- Claude batch (2026-10-04): linear 3-stage lines
+	Mossbun = { { To = "Clovelop", Weight = 100 } },
+	Clovelop = { { To = "Meadowhare", Weight = 100 } },
+	Leafling = { { To = "Budwing", Weight = 100 } },
+	Budwing = { { To = "Blossomwing", Weight = 100 } },
+	Cinderkit = { { To = "Flarefox", Weight = 100 } },
+	Flarefox = { { To = "Solarfox", Weight = 100 } },
+	Emberchick = { { To = "Blazewing", Weight = 100 } },
+	Blazewing = { { To = "Sunphoenix", Weight = 100 } },
+	Ripplet = { { To = "Brookotter", Weight = 100 } },
+	Brookotter = { { To = "Tidalotter", Weight = 100 } },
+	Foamclaw = { { To = "Pearlclaw", Weight = 100 } },
+	Pearlclaw = { { To = "Reefking", Weight = 100 } },
 }
 
 -- ============ EVOLUTION STONES (v24) — pick your branch ============
