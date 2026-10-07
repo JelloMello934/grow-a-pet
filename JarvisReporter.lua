@@ -5,7 +5,7 @@
 -- garden claims, plot states, FPS). STUDIO-ONLY: silent in a published game.
 -- Sends: Lua error text, game-state numbers, timestamps. Nothing personal.
 
-local REPORT_URL = "https://webhook.site/2eacd88f-7592-4605-a211-1e154d7cb272"
+local REPORT_URL = "https://webhook.site/0fa4778d-d516-42e2-b044-31b46ef7f352"
 
 local Reporter = {}
 
